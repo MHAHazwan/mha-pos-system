@@ -203,7 +203,8 @@ export default function App() {
 
         // Filter products based on user role
         if (userRole === 'cashier') {
-          productsData = productsData.filter(product => product.status === 'Active');
+          // Treat products without a 'status' field as 'Active' by default
+          productsData = productsData.filter(product => (product.status === 'Active' || product.status === undefined));
         }
         setProducts(productsData);
       }, (error) => {

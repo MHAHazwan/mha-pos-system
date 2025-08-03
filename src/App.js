@@ -84,6 +84,7 @@ export default function App() {
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [remark, setRemark] = useState(''); // New state for sale remark
 
   // New states for User Management (Admin Only)
   const [usersInSystem, setUsersInSystem] = useState([]);
@@ -101,6 +102,187 @@ export default function App() {
   // State for Admin Dashboard View
   const [currentAdminView, setCurrentAdminView] = useState('products'); // 'products', 'sales', 'users'
 
+  // --- NEW STATES FOR EDITING SALES HISTORY ---
+  const [showEditSaleModal, setShowEditSaleModal] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
+  const [editSaleDate, setEditSaleDate] = useState('');
+  const [editSaleCustomerName, setEditSaleCustomerName] = useState('');
+  const [editSalePaymentMethod, setEditSalePaymentMethod] = useState('');
+  const [editSaleRemark, setEditSaleRemark] = useState('');
+  const [editSaleItems, setEditSaleItems] = useState([]);
+  const [showConfirmEditSaleModal, setShowConfirmEditSaleModal] = useState(false);
+  const [pendingSaleUpdate, setPendingSaleUpdate] = useState(null);
+  // --- END NEW STATES ---
+  
+  // --- NEW STATES FOR DELETING SALES HISTORY ---
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [deletingSaleId, setDeletingSaleId] = useState(null);
+
+  // --- NEW STATES FOR SALES HISTORY FILTERING AND EXPANDED VIEW ---
+  const [expandedSaleId, setExpandedSaleId] = useState(null); // Track which sales row is expanded
+  const [filterCustomerName, setFilterCustomerName] = useState('');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  
+  // Custom CSS for better styling and modal functionality
+  const customStyles = `
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .modal-content {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      max-width: 90%;
+      width: 400px;
+      animation: slideIn 0.3s ease-out;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-content-lg {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      max-width: 90%;
+      width: 700px;
+      animation: slideIn 0.3s ease-out;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(-50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .input-field {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid #d1d5db;
+      font-size: 1rem;
+      transition: all 0.2s ease-in-out;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    
+    .input-field:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .input-field-small {
+      width: 100%;
+      padding: 0.35rem 0.5rem;
+      border-radius: 0.375rem;
+      border: 1px solid #d1d5db;
+      font-size: 0.875rem;
+    }
+
+    .btn-primary {
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      color: #ffffff;
+      background-color: #6366f1;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      transition: all 0.2s ease-in-out;
+      border: none;
+    }
+
+    .btn-primary:hover {
+      background-color: #4f46e5;
+      box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-secondary {
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      color: #4b5563;
+      background-color: #e5e7eb;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      transition: all 0.2s ease-in-out;
+      border: none;
+    }
+
+    .btn-secondary:hover {
+      background-color: #d1d5db;
+      box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab-button {
+      padding: 0.75rem 1.5rem;
+      font-weight: 500;
+      color: #6b7280;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease-in-out;
+    }
+    
+    .tab-button:hover {
+      color: #4b5563;
+    }
+
+    .tab-button-active {
+      color: #4f46e5;
+      border-bottom-color: #4f46e5;
+      font-weight: 600;
+    }
+
+    .table-header {
+      padding: 1rem 1.5rem;
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .table-cell {
+      padding: 1rem 1.5rem;
+      white-space: nowrap;
+      font-size: 0.875rem;
+      color: #4b5563;
+    }
+
+    .label-field {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #4b5563;
+      margin-bottom: 0.25rem;
+    }
+
+    .input-field-table {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      border: 1px solid #d1d5db;
+      width: 100%;
+      font-size: 0.875rem;
+    }
+
+  `;
 
   // Initialize Firebase and handle authentication state changes
   useEffect(() => {
@@ -423,6 +605,7 @@ export default function App() {
     setCustomerName('');
     setPaymentMethod('Cash');
     setPurchaseDate(new Date().toISOString().split('T')[0]);
+    setRemark('');
   };
 
   const checkout = async () => {
@@ -489,23 +672,23 @@ export default function App() {
         });
 
         const finalSaleTotal = saleItems.reduce((sum, item) => sum + item.discountedPrice * item.quantity, 0);
+        const totalDiscount = saleItems.reduce((sum, item) => sum + item.discountApplied * item.quantity, 0);
 
         transaction.set(doc(salesCollectionRef), {
           items: saleItems,
           total: parseFloat(finalSaleTotal.toFixed(2)),
+          totalDiscount: parseFloat(totalDiscount.toFixed(2)),
           timestamp: serverTimestamp(),
           customerName: customerName.trim(),
           paymentMethod: paymentMethod,
           purchaseDate: purchaseDate,
+          remark: remark.trim(), // New remark field
           soldBy: auth.currentUser?.email || 'Unknown Cashier', // Record who made the sale
           soldById: userId, // Record the ID of who made the sale
         });
       });
 
-      setCart([]);
-      setCustomerName('');
-      setPaymentMethod('Cash');
-      setPurchaseDate(new Date().toISOString().split('T')[0]);
+      clearSale(); // Use the new clear function
       setErrorMessage('');
       setSuccessMessage('Checkout successful!');
     } catch (error) {
@@ -566,7 +749,6 @@ export default function App() {
       setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
-
     try {
       const productDocRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, editingProduct.id);
       await updateDoc(productDocRef, {
@@ -585,7 +767,6 @@ export default function App() {
       setErrorMessage("Failed to update product. Please try again.");
     }
   };
-
 
   const handleDeleteProduct = async (productId) => {
     if (!db) {
@@ -611,14 +792,12 @@ export default function App() {
       setErrorMessage("Please fill in all fields for the new user, including your admin password.");
       return;
     }
-
     const currentAdminUser = auth.currentUser; // Get the current admin's user object
     if (!currentAdminUser || !currentAdminUser.email) {
       setErrorMessage("Admin user session invalid. Please log out and back in.");
       return;
     }
     const currentAdminEmail = currentAdminUser.email;
-
     try {
       // 1. Create user in Firebase Authentication.
       // This action will automatically log in the new user, logging out the current admin.
@@ -635,8 +814,10 @@ export default function App() {
       // 3. Assign role to the new user in Firestore.
       // This operation now happens while the original admin is authenticated.
       const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, newUserUid);
-      await setDoc(userRoleDocRef, { role: newAddUserRole, email: newAddUserEmail.trim() });
-
+      await setDoc(userRoleDocRef, {
+        role: newAddUserRole,
+        email: newAddUserEmail.trim()
+      });
       setNewAddUserEmail('');
       setNewAddUserPassword('');
       setNewAddUserRole('cashier'); // Reset to default
@@ -657,7 +838,6 @@ export default function App() {
     }
   };
 
-
   const openEditUserRoleModal = (user) => {
     setEditingUserForRole(user);
     setNewRoleForUser(user.role);
@@ -673,939 +853,883 @@ export default function App() {
       setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
-
     try {
       const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, editingUserForRole.id);
-      await updateDoc(userRoleDocRef, { role: newRoleForUser });
+      await updateDoc(userRoleDocRef, {
+        role: newRoleForUser
+      });
       setShowEditUserRoleModal(false);
       setEditingUserForRole(null);
       setNewRoleForUser('');
       setErrorMessage('');
-      setSuccessMessage(`Role for ${editingUserForRole.email || editingUserForRole.id} updated to ${newRoleForUser}!`);
+      setSuccessMessage(`Role for ${editingUserForRole.email || editingUserForRole.id.substring(0, 8) + '...'} updated successfully!`);
     } catch (error) {
       console.error("Error updating user role:", error);
       setErrorMessage("Failed to update user role. Please try again.");
     }
   };
 
-  const handleDeleteUser = async (userToDelete) => {
-    if (!db) {
-      setErrorMessage("Database not ready. Please wait or refresh.");
-      return;
-    }
-    // Prevent admin from deleting themselves
-    if (userToDelete.id === userId) {
-      setErrorMessage("You cannot delete your own account from here.");
-      return;
-    }
 
-    if (window.confirm(`Are you sure you want to delete user ${userToDelete.email || userToDelete.id}? This action cannot be undone.`)) {
-      try {
-        // IMPORTANT: This only deletes the user's role document from Firestore.
-        // It does NOT delete the actual Firebase Authentication user account.
-        // Deleting a Firebase Auth user (for another user) requires server-side operations (e.g., Cloud Functions)
-        // for security reasons. For this demo, removing the role document effectively prevents
-        // them from logging into the POS system.
-        const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, userToDelete.id);
-        await deleteDoc(userRoleDocRef);
-        setErrorMessage('');
-        setSuccessMessage(`User ${userToDelete.email || userToDelete.id} "deleted" successfully (role removed).`);
-      } catch (error) {
-        console.error("Error deleting user:", error);
-        setErrorMessage("Failed to delete user. Please try again.");
-      }
-    }
+  // --- SALES HISTORY EDITING HANDLERS (ADMIN ONLY) ---
+
+  const openEditSaleModal = (sale) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setEditingSale(sale);
+    setEditSaleDate(sale.purchaseDate);
+    setEditSaleCustomerName(sale.customerName);
+    setEditSalePaymentMethod(sale.paymentMethod);
+    setEditSaleRemark(sale.remark || '');
+    setEditSaleItems(sale.items.map(item => ({
+      ...item,
+      // Ensure prices are numbers for calculations
+      originalPrice: parseFloat(item.originalPrice),
+      discountedPrice: parseFloat(item.discountedPrice),
+      discountApplied: parseFloat(item.discountApplied),
+    })));
+    setShowEditSaleModal(true);
   };
 
+  const handleUpdateEditSaleItem = (index, field, value) => {
+    setEditSaleItems(prevItems => {
+      const newItems = [...prevItems];
+      const itemToUpdate = { ...newItems[index]
+      };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="text-lg font-semibold text-gray-700">Loading POS System...</div>
-      </div>
-    );
-  }
+      if (field === 'quantity') {
+        const newQuantity = parseInt(value);
+        if (isNaN(newQuantity) || newQuantity < 1) {
+          setErrorMessage("Quantity must be a positive number.");
+          return prevItems;
+        }
+        itemToUpdate.quantity = newQuantity;
+      } else if (field === 'discountApplied') {
+        const newDiscount = parseFloat(value);
+        if (isNaN(newDiscount) || newDiscount < 0) {
+          setErrorMessage("Discount must be a non-negative number.");
+          return prevItems;
+        }
+        if (newDiscount > itemToUpdate.originalPrice) {
+          setErrorMessage("Discount cannot be more than the item's price.");
+          return prevItems;
+        }
+        itemToUpdate.discountApplied = newDiscount;
+        itemToUpdate.discountedPrice = Math.max(0, itemToUpdate.originalPrice - newDiscount);
+      } else if (field === 'batchNumber') {
+        itemToUpdate.batchNumber = value;
+      }
 
-  // Render role selection or login/signup form if not authenticated
-  if (!isAuthenticated) {
-    // Show role selection buttons if no role has been attempted yet
-    if (!selectedRoleAttempt) {
-      return (
-        <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 font-sans relative">
-          <style>
-            {`
-              html, body { margin: 0; padding: 0; }
-              body { font-family: 'Inter', sans-serif; }
-              .login-btn {
-                @apply bg-gray-200 text-gray-800 font-bold py-4 px-8 rounded-xl shadow-lg transition duration-300 ease-in-out text-xl transform hover:scale-105 border border-gray-400;
-              }
-              .login-btn:hover {
-                @apply bg-black text-white;
-              }
-              .card {
-                @apply bg-white p-8 rounded-2xl shadow-2xl;
-              }
-            `}
-          </style>
-          <div className="card w-full max-w-md p-8 text-center">
-            <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-2">Hazwan & Alani's Kitchen</h1>
-            <h2 className="text-3xl font-bold text-gray-800 mb-8">Choose Your Role</h2>
-            <div className="flex flex-col space-y-4">
-              <button
-                onClick={() => setSelectedRoleAttempt('admin')}
-                className="login-btn"
-              >
-                Login as Admin
-              </button>
-              <button
-                onClick={() => setSelectedRoleAttempt('cashier')}
-                className="login-btn"
-              >
-                Login as Cashier
-              </button>
-            </div>
-          </div>
+      newItems[index] = itemToUpdate;
+      return newItems;
+    });
+  };
 
-          <div className="absolute bottom-4 w-full text-center">
-            <p className="text-sm text-gray-600">MHA POS System &copy; created by Muhammad Hazwan Arif</p>
-          </div>
-        </div>
-      );
+  const handleConfirmEditSale = () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!editSaleCustomerName.trim() || !editSaleDate || !editSalePaymentMethod) {
+      setErrorMessage("Please fill in all required sale details.");
+      return;
+    }
+    if (editSaleItems.length === 0) {
+      setErrorMessage("A sale must have at least one item.");
+      return;
     }
 
-    // Show login form after a role has been selected (no signup option here)
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans">
-        <style>
-          {`
-            html, body { margin: 0; padding: 0; }
-            body { font-family: 'Inter', sans-serif; }
-            .btn-primary {
-              @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out;
-            }
-            .btn-secondary {
-              @apply bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out;
-            }
-            .input-field {
-              @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
-            }
-            .card {
-              @apply bg-white p-6 rounded-xl shadow-lg;
-            }
-            .message-box {
-              @apply px-4 py-3 rounded-lg relative mb-4 w-full max-w-md;
-            }
-            .message-box.error {
-              @apply bg-red-100 border border-red-400 text-red-700;
-            }
-            .message-box.success {
-              @apply bg-green-100 border border-green-400 text-green-700;
-            }
-          `}
-        </style>
-        <div className="card w-full max-w-md">
-          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">
-            {showForgotPassword ? 'Reset Password' : `Login as ${selectedRoleAttempt}`}
-          </h2>
-          {errorMessage && (
-            <div className="message-box error" role="alert">
-              <span className="block sm:inline">{errorMessage}</span>
-              <span className="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onClick={() => setErrorMessage('')}>
-                <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.697l-2.651 3.152a1.2 1.2 0 1 1-1.697-1.697L8.303 10 5.152 7.348a1.2 1.2 0 0 1 1.697-1.697L10 8.303l2.651-3.152a1.2 1.2 0 1 1 1.697 1.697L11.697 10l3.152 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-              </span>
-            </div>
-          )}
-          {successMessage && (
-            <div className="message-box success" role="alert">
-              <span className="block sm:inline">{successMessage}</span>
-              <span className="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onClick={() => setSuccessMessage('')}>
-                <svg className="fill-current h-6 w-6 text-green-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.697l-2.651 3.152a1.2 1.2 0 1 1-1.697-1.697L8.303 10 5.152 7.348a1.2 1.2 0 0 1 1.697-1.697L10 8.303l2.651-3.152a1.2 1.2 0 1 1 1.697 1.697L11.697 10l3.152 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-          </span>
-        </div>
-      )}
+    const newTotal = editSaleItems.reduce((sum, item) => sum + item.discountedPrice * item.quantity, 0);
+    const newTotalDiscount = editSaleItems.reduce((sum, item) => sum + item.discountApplied * item.quantity, 0);
 
-      {!showForgotPassword ? (
-        <>
-          {/* Email input */}
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="your@example.com"
-            />
-          </div>
-          {/* Password input */}
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              placeholder="********"
-            />
-          </div>
-          <button onClick={handleAuthAction} className="btn-primary w-full mb-4">
-            Login
-          </button>
-          <p className="text-center text-sm text-gray-600 mt-2">
-            <span
-              className="text-blue-600 hover:text-blue-800 cursor-pointer font-medium"
+    const updatedSale = {
+      ...editingSale,
+      customerName: editSaleCustomerName.trim(),
+      purchaseDate: editSaleDate,
+      paymentMethod: editSalePaymentMethod,
+      remark: editSaleRemark.trim(),
+      items: editSaleItems,
+      total: parseFloat(newTotal.toFixed(2)),
+      totalDiscount: parseFloat(newTotalDiscount.toFixed(2)),
+    };
+
+    setPendingSaleUpdate(updatedSale);
+    setShowEditSaleModal(false); // Hide the edit form
+    setShowConfirmEditSaleModal(true); // Show the confirmation modal
+  };
+
+  const confirmUpdateSale = async () => {
+    if (!db || !pendingSaleUpdate) {
+      setErrorMessage("Database or pending sale data is not ready.");
+      setShowConfirmEditSaleModal(false);
+      setShowEditSaleModal(false);
+      return;
+    }
+    const appId = window.__app_id;
+    const saleDocRef = doc(db, `artifacts/${appId}/public/data/sales`, pendingSaleUpdate.id);
+
+    try {
+      await updateDoc(saleDocRef, {
+        customerName: pendingSaleUpdate.customerName,
+        purchaseDate: pendingSaleUpdate.purchaseDate,
+        paymentMethod: pendingSaleUpdate.paymentMethod,
+        remark: pendingSaleUpdate.remark,
+        items: pendingSaleUpdate.items.map(item => {
+          // Clean up the item objects for saving
+          const {
+            originalPrice,
+            discountedPrice,
+            discountApplied,
+            quantity,
+            batchNumber,
+            name,
+            productId
+          } = item;
+          return {
+            originalPrice,
+            discountedPrice,
+            discountApplied,
+            quantity,
+            batchNumber,
+            name,
+            productId
+          };
+        }),
+        total: pendingSaleUpdate.total,
+        totalDiscount: pendingSaleUpdate.totalDiscount,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.email || 'Unknown Admin',
+      });
+      setSuccessMessage("Sale record updated successfully!");
+    } catch (error) {
+      console.error("Error updating sale record:", error);
+      setErrorMessage(`Failed to update sale record: ${error.message}`);
+    } finally {
+      // Clean up state regardless of success or failure
+      setShowConfirmEditSaleModal(false);
+      setEditingSale(null);
+      setPendingSaleUpdate(null);
+    }
+  };
+  
+  // --- NEW HANDLERS FOR DELETING SALES HISTORY ---
+  const handleDeleteSale = (saleId) => {
+      setErrorMessage('');
+      setSuccessMessage('');
+      setDeletingSaleId(saleId);
+      setShowConfirmDeleteModal(true);
+  };
+  
+  const confirmDeleteSale = async () => {
+      if (!db || !deletingSaleId) {
+          setErrorMessage("Database or sale ID not ready.");
+          setShowConfirmDeleteModal(false);
+          return;
+      }
+      const appId = window.__app_id;
+      const saleDocRef = doc(db, `artifacts/${appId}/public/data/sales`, deletingSaleId);
+      
+      try {
+          await deleteDoc(saleDocRef);
+          setSuccessMessage("Sale record deleted successfully!");
+      } catch (error) {
+          console.error("Error deleting sale record:", error);
+          setErrorMessage(`Failed to delete sale record: ${error.message}`);
+      } finally {
+          setShowConfirmDeleteModal(false);
+          setDeletingSaleId(null);
+      }
+  };
+
+  // --- HELPER FUNCTION FOR SALES HISTORY FILTERING ---
+  const getFilteredSales = () => {
+    return sales.filter(sale => {
+      // Customer Name filter
+      const customerNameMatch = filterCustomerName.trim() === '' ||
+        (sale.customerName && sale.customerName.toLowerCase().includes(filterCustomerName.toLowerCase()));
+
+      // Payment Method filter
+      const paymentMethodMatch = filterPaymentMethod === '' ||
+        (sale.paymentMethod && sale.paymentMethod === filterPaymentMethod);
+
+      // Date Range filter
+      const saleDate = new Date(sale.purchaseDate);
+      const start = filterStartDate ? new Date(filterStartDate) : null;
+      const end = filterEndDate ? new Date(filterEndDate) : null;
+
+      const dateMatch = (!start || saleDate >= start) && (!end || saleDate <= end);
+      
+      return customerNameMatch && paymentMethodMatch && dateMatch;
+    });
+  };
+  
+  // --- RENDERING COMPONENTS ---
+
+  const Message = ({ message, type }) => {
+    const color = type === 'error' ? 'text-red-800 bg-red-100' : 'text-green-800 bg-green-100';
+    if (!message) return null;
+    return (
+      <div className={`p-3 rounded-lg text-sm font-medium ${color}`}>
+        {message}
+      </div>
+    );
+  };
+
+  const Loader = () => (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+  );
+
+  const AuthForm = () => (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 font-[Inter]">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-2xl">
+        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">MHA POS System</h1>
+        <Message message={errorMessage} type="error" />
+        <Message message={successMessage} type="success" />
+
+        {showForgotPassword ? (
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-4 text-center">Forgot Password</h2>
+            <p className="text-sm text-gray-600 mb-4 text-center">
+              Enter your email to receive a password reset link.
+            </p>
+            <div className="mb-4">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email Address"
+                className="input-field"
+              />
+            </div>
+            <button onClick={handlePasswordReset} className="btn-primary w-full mb-3">Send Reset Email</button>
+            <button
               onClick={() => {
-                setShowForgotPassword(true);
+                setShowForgotPassword(false);
                 setErrorMessage('');
                 setSuccessMessage('');
-                setEmail('');
               }}
+              className="btn-secondary w-full"
             >
-              Forgot Password?
-            </span>
-          </p>
-        </>
-      ) : ( // Forgot Password UI
-        <>
-          <div className="mb-4">
-            <label htmlFor="resetEmail" className="block text-sm font-medium text-gray-700">Email Address</label>
-            <input
-              type="email"
-              id="resetEmail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="your@example.com"
-            />
+              Back to Login
+            </button>
           </div>
-          <button onClick={handlePasswordReset} className="btn-primary w-full mb-4">
-            Send Reset Email
-          </button>
-          <button
-            onClick={() => {
-              setShowForgotPassword(false);
-              setErrorMessage('');
-              setSuccessMessage('');
-              setEmail('');
-              setPassword('');
-            }}
-            className="btn-secondary w-full"
-          >
-            Back to Login
-          </button>
-        </>
-      )}
-      <button
-        onClick={() => {
-          setSelectedRoleAttempt(null);
-          setShowForgotPassword(false);
-          setErrorMessage('');
-          setSuccessMessage('');
-          setEmail('');
-          setPassword('');
-        }}
-        className="btn-secondary w-full mt-4"
-      >
-        Back to Role Selection
-      </button>
-    </div>
-  </div>
-);
-}
-
-// Render main POS app if authenticated
-return (
-  <div className="min-h-screen bg-gray-100 p-4 font-sans flex flex-col items-center">
-    <style>
-      {`
-        html, body { margin: 0; padding: 0; }
-        body { font-family: 'Inter', sans-serif; }
-        .btn {
-          @apply font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105;
-        }
-        .btn-primary {
-          @apply bg-blue-600 text-white;
-        }
-        .btn-primary:hover {
-          @apply bg-blue-700;
-        }
-        .btn-secondary {
-          @apply bg-gray-300 text-gray-800;
-        }
-        .btn-secondary:hover {
-          @apply bg-gray-400;
-        }
-        .btn-danger {
-          @apply bg-red-500 text-white;
-        }
-        .btn-danger:hover {
-          @apply bg-red-600;
-        }
-        .card {
-          @apply bg-white p-6 rounded-xl shadow-lg;
-        }
-        .input-field {
-          @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
-        }
-        /* Enhanced product card for better aesthetics */
-        .product-card {
-          @apply border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-md hover:shadow-xl transition-all duration-300 ease-in-out bg-white;
-        }
-        .product-card button {
-          @apply text-sm py-1 px-3 rounded-md transition-colors duration-200;
-        }
-        .product-card .btn-add-to-cart {
-          @apply bg-green-500 text-white hover:bg-green-600;
-        }
-        .product-card .btn-edit {
-          @apply bg-yellow-500 text-white hover:bg-yellow-600;
-        }
-        .product-card .btn-delete {
-          @apply bg-red-500 text-white hover:bg-red-600;
-        }
-        .message-box {
-          @apply px-4 py-3 rounded-lg relative mb-4 w-full max-w-md;
-        }
-        .message-box.error {
-          @apply bg-red-100 border border-red-400 text-red-700;
-        }
-        .message-box.success {
-          @apply bg-green-100 border border-green-400 text-green-700;
-        }
-        /* Styles for active navigation button */
-        .nav-button.active {
-          @apply bg-blue-600 text-white;
-        }
-        .nav-button {
-          @apply py-2 px-4 rounded-lg font-semibold transition duration-200 ease-in-out;
-        }
-        /* Table specific enhancements */
-        .table-header {
-          @apply py-3 px-6 text-left text-gray-600 uppercase text-sm leading-normal font-bold;
-        }
-        .table-row-cell {
-          @apply py-3 px-6 text-gray-700 text-sm;
-        }
-        .table-row:nth-child(even) {
-          @apply bg-gray-50;
-        }
-        .table-row:hover {
-          @apply bg-gray-100;
-        }
-      `}
-    </style>
-
-    <div className="w-full max-w-6xl flex justify-between items-start mb-8 mt-4">
-      <h1 className="text-4xl font-bold text-gray-800">MHA POS System</h1>
-      <div className="flex flex-col items-end space-y-1">
-        {auth.currentUser?.email && <span className="text-gray-700 font-medium">Logged in as: {auth.currentUser.email}</span>}
-        {userRole && <span className="text-gray-700 font-medium capitalize">Role: {userRole}</span>}
-        <button onClick={handleSignOut} className="btn-secondary mt-2">
-          Logout
-        </button>
+        ) : (
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-4 text-center">Log In</h2>
+            <div className="mb-4">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email Address"
+                className="input-field"
+              />
+            </div>
+            <div className="mb-6">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="input-field"
+              />
+            </div>
+            <div className="flex flex-col space-y-3">
+              <button onClick={() => {
+                setSelectedRoleAttempt('admin');
+                handleAuthAction();
+              }} className="btn-primary">
+                Log In as Admin
+              </button>
+              <button onClick={() => {
+                setSelectedRoleAttempt('cashier');
+                handleAuthAction();
+              }} className="btn-secondary">
+                Log In as Cashier
+              </button>
+            </div>
+            <div className="text-center mt-4">
+              <button
+                onClick={() => {
+                  setShowForgotPassword(true);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
 
-    {errorMessage && (
-      <div className="message-box error w-full max-w-4xl" role="alert">
-        <span className="block sm:inline">{errorMessage}</span>
-        <span className="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onClick={() => setErrorMessage('')}>
-          <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.697l-2.651 3.152a1.2 1.2 0 1 1-1.697-1.697L8.303 10 5.152 7.348a1.2 1.2 0 0 1 1.697-1.697L10 8.303l2.651-3.152a1.2 1.2 0 1 1 1.697 1.697L11.697 10l3.152 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-        </span>
-      </div>
-    )}
-    {successMessage && (
-      <div className="message-box success" role="alert">
-        <span className="block sm:inline">{successMessage}</span>
-        <span className="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onClick={() => setSuccessMessage('')}>
-          <svg className="fill-current h-6 w-6 text-green-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.697l-2.651 3.152a1.2 1.2 0 1 1-1.697-1.697L8.303 10 5.152 7.348a1.2 1.2 0 0 1 1.697-1.697L10 8.303l2.651-3.152a1.2 1.2 0 1 1 1.697 1.697L11.697 10l3.152 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-        </span>
-      </div>
-    )}
-
-    {/* Admin Dashboard Navigation */}
-    {userRole === 'admin' && (
-      <div className="w-full max-w-6xl mb-8 flex justify-center space-x-4">
-        <button
-          onClick={() => setCurrentAdminView('products')}
-          className={`nav-button ${currentAdminView === 'products' ? 'active bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}
-        >
-          Product Management
-        </button>
-        <button
-          onClick={() => setCurrentAdminView('sales')}
-          className={`nav-button ${currentAdminView === 'sales' ? 'active bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}
-        >
-          Sales History
-        </button>
-        <button
-          onClick={() => setCurrentAdminView('users')}
-          className={`nav-button ${currentAdminView === 'users' ? 'active bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}
-        >
-          User Management
-        </button>
-      </div>
-    )}
-
-    {/* Main Content Area based on Role and Admin View */}
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full max-w-6xl">
-      {/* Cashier Panel: Current Sale (always visible for cashier, never for admin) */}
-      {userRole === 'cashier' && (
-        <div className="lg:col-span-3 card"> {/* Cashier panel takes full width */}
-          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Current Sale</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Products List for Cashier */}
-            <div className="col-span-1">
-              <h3 className="text-xl font-medium text-gray-700 mb-3">Available Products</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-2">
-                {products.length === 0 ? (
-                  <p className="text-gray-500">No products available.</p>
-                ) : (
-                  products.map(product => (
-                    <div key={product.id} className="product-card">
-                      <div>
-                        <h4 className="text-lg font-medium text-gray-800">{product.name}</h4>
-                        <p className="text-gray-600 text-xl font-bold mt-1">RM {product.price.toFixed(2)}</p>
-                        <p className={`text-sm mt-1 ${product.stock <= 5 && product.stock > 0 ? 'text-orange-500 font-semibold' : product.stock === 0 ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
-                          Stock: {product.stock}
-                        </p>
-                        {product.batchNumber && (
-                          <p className="text-sm text-gray-500">Batch: {product.batchNumber}</p>
-                        )}
-                        <p className="text-sm text-gray-500">Status: {product.status || 'Active'}</p>
-                      </div>
-                      <div className="flex justify-end mt-3">
-                        <button
-                          onClick={() => addProductToCart(product)}
-                          className="btn-add-to-cart"
-                          disabled={product.stock <= 0}
-                        >
-                          Add to Cart
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+  const CashierPanel = () => (
+    <div className="flex flex-col md:flex-row h-screen bg-gray-100 font-[Inter]">
+      {/* Product List */}
+      <div className="w-full md:w-3/5 p-6 overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Products</h1>
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-600">Signed in as: <span className="font-semibold">{auth.currentUser?.email}</span></span>
+            <button onClick={handleSignOut} className="btn-secondary">Sign Out</button>
+          </div>
+        </div>
+        <Message message={errorMessage} type="error" />
+        <Message message={successMessage} type="success" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {products.map(product => (
+            <div key={product.id} className="bg-white p-4 rounded-xl shadow-lg flex flex-col justify-between transform transition duration-300 hover:scale-105">
+              <div className="flex-grow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{product.name}</h3>
+                <p className="text-sm text-gray-600">Batch: {product.batchNumber || 'N/A'}</p>
+                <p className="text-sm text-gray-600">Stock: {product.stock}</p>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-2xl font-bold text-indigo-600">
+                  RM{product.price ? product.price.toFixed(2) : '0.00'}
+                </span>
+                <button
+                  onClick={() => addProductToCart(product)}
+                  className="btn-primary"
+                  disabled={product.stock <= 0}
+                >
+                  Add to Cart
+                </button>
               </div>
             </div>
+          ))}
+        </div>
+      </div>
 
-            {/* Cart & Checkout for Cashier */}
-            <div className="col-span-1">
-              <h3 className="text-xl font-medium text-gray-700 mb-3">Cart</h3>
-              {cart.length === 0 ? (
-                <p className="text-gray-500">Cart is empty. Add products from the left.</p>
-              ) : (
-                <>
-                  <ul className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2">
-                    {cart.map(item => (
-                      <li key={item.id} className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
-                        <div className="flex-grow">
-                          <p className="font-medium text-gray-800">{item.name}</p>
-                          {item.batchNumber && (
-                            <p className="text-xs text-gray-500">Batch: {item.batchNumber}</p>
-                          )}
-                          <p className="text-sm text-gray-600">RM {item.price.toFixed(2)} x {item.quantity}</p>
-                          <div className="mt-2 flex items-center">
-                            <label htmlFor={`discount-${item.id}`} className="block text-sm font-medium text-gray-700 mr-2">Discount (RM):</label>
-                            <input
-                              type="number"
-                              id={`discount-${item.id}`}
-                              value={item.discountApplied}
-                              onChange={(e) => updateCartItemDiscount(item.id, e.target.value)}
-                              className="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
-                              step="0.01"
-                              min="0"
-                              max={item.price} // Max discount is item price
-                            />
-                          </div>
-                        </div>
-                        <div className="flex items-center">
-                          <button
-                            onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
-                            className="bg-gray-200 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-300 transition"
-                          >
-                            -
-                          </button>
-                          <span className="mx-2 font-semibold">{item.quantity}</span>
-                          <button
-                            onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
-                            className="bg-gray-200 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-300 transition"
-                          >
-                            +
-                          </button>
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="ml-3 text-red-500 hover:text-red-700"
-                          >
-                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  {/* Customer Name, Payment Method, Purchase Date Inputs */}
-                  <div className="mb-4">
-                    <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Customer Name</label>
+      {/* Cart & Checkout */}
+      <div className="w-full md:w-2/5 p-6 bg-gray-50 flex flex-col h-full">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">Checkout</h2>
+        <div className="flex-grow overflow-y-auto">
+          {cart.length === 0 ? (
+            <div className="text-center text-gray-500 py-10">Cart is empty.</div>
+          ) : (
+            cart.map(item => (
+              <div key={item.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm mb-4">
+                <div className="flex-grow">
+                  <h3 className="font-semibold text-gray-800">{item.name}</h3>
+                  <p className="text-sm text-gray-500">Price: RM{(item.price - (item.discountApplied || 0)).toFixed(2)}</p>
+                  <p className="text-sm text-gray-500">Batch: {item.batchNumber || 'N/A'}</p>
+                  <div className="mt-2 text-sm text-gray-600">
+                    <label className="block">Discount (RM):</label>
                     <input
-                      type="text"
-                      id="customerName"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      className="input-field"
-                      placeholder="Enter customer name"
+                      type="number"
+                      value={item.discountApplied}
+                      onChange={(e) => updateCartItemDiscount(item.id, e.target.value)}
+                      min="0"
+                      step="0.01"
+                      className="input-field-small"
                     />
                   </div>
-                  <div className="mb-4">
-                    <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700">Payment Method</label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    value={item.quantity}
+                    onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value))}
+                    min="1"
+                    className="w-16 text-center border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-9V5a1 1 0 00-1-1H9a1 1 0 00-1 1v2m-6 0h14" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Customer Details & Actions */}
+        <div className="mt-6 pt-6 border-t-2 border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label htmlFor="customerName" className="label-field">Customer Name</label>
+              <input
+                id="customerName"
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Enter customer name"
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label htmlFor="paymentMethod" className="label-field">Payment Method</label>
+              <select
+                id="paymentMethod"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="input-field"
+              >
+                <option value="Cash">Cash</option>
+                <option value="DuitNowQR">DuitNowQR</option>
+              </select>
+            </div>
+            <div className="col-span-1 md:col-span-2">
+              <label htmlFor="remark" className="label-field">Remark</label>
+              <input
+                id="remark"
+                type="text"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder="Add a remark (optional)"
+                className="input-field"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-2xl font-bold text-gray-800">Total:</span>
+            <span className="text-3xl font-extrabold text-indigo-600">RM{total.toFixed(2)}</span>
+          </div>
+          <button onClick={checkout} className="btn-primary w-full mb-3" disabled={cart.length === 0}>
+            Complete Sale
+          </button>
+          <button onClick={clearSale} className="btn-secondary w-full">
+            Clear Sale
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const AdminPanel = () => {
+    // Get filtered sales data based on filter states
+    const filteredSales = getFilteredSales();
+
+    return (
+      <div className="min-h-screen bg-gray-100 font-[Inter] flex flex-col">
+        {/* Add the custom styles here */}
+        <style>{customStyles}</style>
+        <header className="bg-white shadow-md p-4 flex flex-col sm:flex-row justify-between items-center sticky top-0 z-10">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2 sm:mb-0">Admin Dashboard</h1>
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-600 hidden md:block">Signed in as: <span className="font-semibold">{auth.currentUser?.email}</span></span>
+            <button onClick={handleSignOut} className="btn-secondary">Sign Out</button>
+          </div>
+        </header>
+
+        <div className="flex-grow p-6 overflow-y-auto">
+          <div className="flex space-x-3 mb-6 border-b border-gray-200">
+            <button
+              onClick={() => setCurrentAdminView('products')}
+              className={`tab-button ${currentAdminView === 'products' ? 'tab-button-active' : ''}`}
+            >
+              Manage Products
+            </button>
+            <button
+              onClick={() => setCurrentAdminView('sales')}
+              className={`tab-button ${currentAdminView === 'sales' ? 'tab-button-active' : ''}`}
+            >
+              Sales History
+            </button>
+            <button
+              onClick={() => setCurrentAdminView('users')}
+              className={`tab-button ${currentAdminView === 'users' ? 'tab-button-active' : ''}`}
+            >
+              Manage Users
+            </button>
+          </div>
+
+          <Message message={errorMessage} type="error" />
+          <Message message={successMessage} type="success" />
+
+          {currentAdminView === 'products' && (
+            <div className="bg-white p-6 rounded-2xl shadow-xl">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-semibold text-gray-700">Products List</h2>
+                <button onClick={() => {
+                  setShowAddProductModal(true);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }} className="btn-primary">
+                  Add New Product
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="table-header">Product Name</th>
+                      <th scope="col" className="table-header">Batch Number</th>
+                      <th scope="col" className="table-header">Price</th>
+                      <th scope="col" className="table-header">Stock</th>
+                      <th scope="col" className="table-header">Status</th>
+                      <th scope="col" className="table-header">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {products.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="text-center py-4 text-gray-500">No products found.</td>
+                      </tr>
+                    ) : (
+                      products.map(product => (
+                        <tr key={product.id}>
+                          <td className="table-cell">{product.name}</td>
+                          <td className="table-cell">{product.batchNumber || 'N/A'}</td>
+                          <td className="table-cell">RM{product.price ? product.price.toFixed(2) : '0.00'}</td>
+                          <td className="table-cell">{product.stock}</td>
+                          <td className="table-cell">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${product.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {product.status || 'Active'}
+                            </span>
+                          </td>
+                          <td className="table-cell">
+                            <div className="flex items-center space-x-2">
+                              <button onClick={() => openEditProductModal(product)} className="text-indigo-600 hover:text-indigo-900 transition">
+                                Edit
+                              </button>
+                              <button onClick={() => handleDeleteProduct(product.id)} className="text-red-600 hover:text-red-900 transition">
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {currentAdminView === 'sales' && (
+            <div className="bg-white p-6 rounded-2xl shadow-xl">
+              <h2 className="text-2xl font-semibold text-gray-700 mb-6">Sales History</h2>
+              {/* Sales History Filter Section */}
+              <div className="mb-6 bg-gray-50 p-4 rounded-xl shadow-inner">
+                <h3 className="font-semibold text-lg text-gray-700 mb-3">Filter Sales</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label htmlFor="filterCustomerName" className="label-field">Customer Name</label>
+                    <input
+                      id="filterCustomerName"
+                      type="text"
+                      value={filterCustomerName}
+                      onChange={(e) => setFilterCustomerName(e.target.value)}
+                      placeholder="e.g., John Doe"
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="filterPaymentMethod" className="label-field">Payment Method</label>
                     <select
-                      id="paymentMethod"
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      id="filterPaymentMethod"
+                      value={filterPaymentMethod}
+                      onChange={(e) => setFilterPaymentMethod(e.target.value)}
                       className="input-field"
                     >
+                      <option value="">All</option>
                       <option value="Cash">Cash</option>
                       <option value="DuitNowQR">DuitNowQR</option>
                     </select>
                   </div>
-                  <div className="mb-6">
-                    <label htmlFor="purchaseDate" className="block text-sm font-medium text-gray-700">Purchase Date</label>
+                  <div>
+                    <label htmlFor="filterStartDate" className="label-field">Start Date</label>
                     <input
+                      id="filterStartDate"
                       type="date"
-                      id="purchaseDate"
-                      value={purchaseDate}
-                      onChange={(e) => setPurchaseDate(e.target.value)}
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
                       className="input-field"
                     />
                   </div>
-
-                  <div className="text-right text-2xl font-bold text-gray-800 mb-6">
-                    Total: RM {total.toFixed(2)}
-                  </div>
-                  <div className="flex justify-between space-x-2">
-                    <button onClick={checkout} className="btn-primary flex-grow">
-                      Checkout
-                    </button>
-                    <button onClick={clearSale} className="btn-secondary flex-grow">
-                      Clear Sale
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Admin Panel: Products Section */}
-      {userRole === 'admin' && currentAdminView === 'products' && (
-        <div className="lg:col-span-3 card">
-          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Products Management</h2>
-          <button
-            onClick={() => setShowAddProductModal(true)}
-            className="btn-primary mb-4 flex items-center"
-          >
-            <span className="mr-2">+</span> Add New Product
-          </button>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {products.length === 0 ? (
-              <p className="text-gray-500 col-span-full">No products added yet. Add some to get started!</p>
-            ) : (
-              products.map(product => (
-                <div key={product.id} className="product-card">
                   <div>
-                    <h3 className="text-lg font-medium text-gray-800">{product.name}</h3>
-                    <p className="text-gray-600 text-xl font-bold mt-1">RM {product.price.toFixed(2)}</p>
-                    <p className={`text-sm mt-1 ${product.stock <= 5 && product.stock > 0 ? 'text-orange-500 font-semibold' : product.stock === 0 ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
-                          Stock: {product.stock}
-                        </p>
-                        {product.batchNumber && (
-                          <p className="text-sm text-gray-500">Batch: {product.batchNumber}</p>
-                        )}
-                        <p className="text-sm text-gray-500">Status: {product.status || 'Active'}</p>
-                      </div>
-                      <div className="flex justify-between items-center mt-3">
-                        <button
-                          onClick={() => openEditProductModal(product)}
-                          className="btn-edit"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="btn-danger ml-2"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    <label htmlFor="filterEndDate" className="label-field">End Date</label>
+                    <input
+                      id="filterEndDate"
+                      type="date"
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="table-header">Sale ID</th>
+                      <th scope="col" className="table-header">Date</th>
+                      <th scope="col" className="table-header">Customer Name</th>
+                      <th scope="col" className="table-header">Total Amount</th>
+                      <th scope="col" className="table-header">Payment Method</th>
+                      <th scope="col" className="table-header">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredSales.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="text-center py-4 text-gray-500">No sales history found.</td>
+                      </tr>
+                    ) : (
+                      filteredSales.map(sale => (
+                        <React.Fragment key={sale.id}>
+                          <tr
+                            className="cursor-pointer hover:bg-gray-100 transition-colors"
+                            onClick={() => setExpandedSaleId(expandedSaleId === sale.id ? null : sale.id)}
+                          >
+                            <td className="table-cell">{sale.id.substring(0, 8)}...</td>
+                            <td className="table-cell">
+                              {sale.purchaseDate || (sale.timestamp ? new Date(sale.timestamp.seconds * 1000).toLocaleDateString() : 'N/A')}
+                            </td>
+                            <td className="table-cell">{sale.customerName}</td>
+                            <td className="table-cell">RM{sale.total ? sale.total.toFixed(2) : '0.00'}</td>
+                            <td className="table-cell">{sale.paymentMethod}</td>
+                            <td className="table-cell">
+                              <div className="flex space-x-2">
+                                <button onClick={(e) => {
+                                  e.stopPropagation(); // Prevent row from collapsing
+                                  openEditSaleModal(sale);
+                                }} className="text-indigo-600 hover:text-indigo-900 transition">
+                                  Edit
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation(); // Prevent row from collapsing
+                                  handleDeleteSale(sale.id);
+                                }} className="text-red-600 hover:text-red-900 transition">
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {/* Expanded details row */}
+                          {expandedSaleId === sale.id && (
+                            <tr className="bg-gray-50">
+                              <td colSpan="6" className="p-4 border-t border-gray-200">
+                                <h4 className="font-semibold text-gray-800 mb-2">Sale Details:</h4>
+                                <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                                  <li>Sold By: {sale.soldBy}</li>
+                                  <li>Customer Name: {sale.customerName}</li>
+                                  <li>Payment Method: {sale.paymentMethod}</li>
+                                  <li>Remark: {sale.remark || 'N/A'}</li>
+                                </ul>
+                                <div className="mt-4 overflow-x-auto">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-100">
+                                      <tr>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price (RM)</th>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount (RM)</th>
+                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total (RM)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {sale.items.map((item, itemIndex) => (
+                                        <tr key={itemIndex}>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.batchNumber || 'N/A'}</td>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.originalPrice.toFixed(2)}</td>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.quantity}</td>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.discountApplied.toFixed(2)}</td>
+                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{(item.discountedPrice * item.quantity).toFixed(2)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
-          {/* Admin Panel: Sales History Section */}
-          {userRole === 'admin' && currentAdminView === 'sales' && (
-            <div className="lg:col-span-3 card">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Sales History</h2>
-              {sales.length === 0 ? (
-                <p className="text-gray-500">No sales recorded yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full bg-white rounded-lg shadow-sm">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="table-header">Sale ID</th>
-                        <th className="table-header">Date</th>
-                        <th className="table-header">Customer</th>
-                        <th className="table-header">Method</th>
-                        <th className="table-header">Sold By</th>
-                        <th className="table-header">Items</th>
-                        <th className="table-header">Total</th>
+          {currentAdminView === 'users' && (
+            <div className="bg-white p-6 rounded-2xl shadow-xl">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-semibold text-gray-700">Manage Users</h2>
+                <button onClick={() => {
+                  setShowAddUserModal(true);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }} className="btn-primary">
+                  Add New User
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="table-header">User ID</th>
+                      <th scope="col" className="table-header">Email</th>
+                      <th scope="col" className="table-header">Role</th>
+                      <th scope="col" className="table-header">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {usersInSystem.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="text-center py-4 text-gray-500">No users found.</td>
                       </tr>
-                    </thead>
-                    <tbody className="text-gray-700">
-                      {sales.map(sale => (
-                        <tr key={sale.id} className="border-b border-gray-200 table-row">
-                          <td className="table-row-cell">{sale.id.substring(0, 8)}...</td>
-                          <td className="table-row-cell">
-                            {sale.timestamp ? new Date(sale.timestamp.toDate()).toLocaleString() : 'N/A'}
+                    ) : (
+                      usersInSystem.map(user => (
+                        <tr key={user.id}>
+                          <td className="table-cell">{user.id}</td>
+                          <td className="table-cell">{user.email}</td>
+                          <td className="table-cell">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {user.role}
+                            </span>
                           </td>
-                          <td className="table-row-cell">{sale.customerName || 'N/A'}</td>
-                          <td className="table-row-cell">{sale.paymentMethod || 'N/A'}</td>
-                          <td className="table-row-cell">{sale.soldBy || 'N/A'}</td>
-                          <td className="table-row-cell">
-                            <ul className="list-disc list-inside space-y-1">
-                              {sale.items.map((item, index) => (
-                                <li key={index}>
-                                  {item.name} (x{item.quantity}) - RM {item.originalPrice.toFixed(2)} each
-                                  {item.discountApplied > 0 && ` (-RM ${item.discountApplied.toFixed(2)} discount)`}
-                                  {item.batchNumber && ` (Batch: ${item.batchNumber})`}
-                                </li>
-                              ))}
-                            </ul>
-                          </td>
-                          <td className="table-row-cell font-semibold">RM {sale.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Admin Panel: User Management Section */}
-          {userRole === 'admin' && currentAdminView === 'users' && (
-            <div className="lg:col-span-3 card">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">User Management</h2>
-              <button
-                onClick={() => setShowAddUserModal(true)}
-                className="btn-primary mb-4 flex items-center"
-              >
-                <span className="mr-2">+</span> Sign Up New User
-              </button>
-              {usersInSystem.length === 0 ? (
-                <p className="text-gray-500">No users registered yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full bg-white rounded-lg shadow-sm">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="table-header">User ID</th>
-                        <th className="table-header">Email</th>
-                        <th className="table-header">Role</th>
-                        <th className="table-header">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-gray-700">
-                      {usersInSystem.map(user => (
-                        <tr key={user.id} className="border-b border-gray-200 table-row">
-                          <td className="table-row-cell">{user.id.substring(0, 8)}...</td>
-                          <td className="table-row-cell">{user.email || 'N/A'}</td>
-                          <td className="table-row-cell capitalize">{user.role}</td>
-                          <td className="table-row-cell flex space-x-2">
-                            <button
-                              onClick={() => openEditUserRoleModal(user)}
-                              className="btn-edit text-xs"
-                            >
-                              Edit Role
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user)}
-                              className="btn-danger text-xs"
-                            >
-                              Delete User
-                            </button>
+                          <td className="table-cell">
+                            {user.id !== userId && (
+                              <button
+                                onClick={() => openEditUserRoleModal(user)}
+                                className="text-indigo-600 hover:text-indigo-900 transition"
+                              >
+                                Edit Role
+                              </button>
+                            )}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
 
         {/* Add Product Modal */}
         {showAddProductModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="card w-full max-w-md">
+          <div className="modal-overlay">
+            <div className="modal-content">
               <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New Product</h2>
               <div className="mb-4">
-                <label htmlFor="productName" className="block text-sm font-medium text-gray-700">Product Name</label>
-                <input
-                  type="text"
-                  id="productName"
-                  value={newProductName}
-                  onChange={(e) => setNewProductName(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., Coffee"
-                />
+                <label htmlFor="newProductName" className="label-field">Product Name</label>
+                <input type="text" id="newProductName" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} className="input-field" />
               </div>
               <div className="mb-4">
-                <label htmlFor="productPrice" className="block text-sm font-medium text-gray-700">Price (RM)</label>
-                <input
-                  type="number"
-                  id="productPrice"
-                  value={newProductPrice}
-                  onChange={(e) => setNewProductPrice(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., 5.50"
-                  step="0.01"
-                />
+                <label htmlFor="newProductPrice" className="label-field">Price (RM)</label>
+                <input type="number" id="newProductPrice" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} step="0.01" className="input-field" />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="newProductStock" className="label-field">Stock</label>
+                <input type="number" id="newProductStock" value={newProductStock} onChange={(e) => setNewProductStock(e.target.value)} min="0" className="input-field" />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="newProductBatchNumber" className="label-field">Batch Number</label>
+                <input type="text" id="newProductBatchNumber" value={newProductBatchNumber} onChange={(e) => setNewProductBatchNumber(e.target.value)} className="input-field" />
               </div>
               <div className="mb-6">
-                <label htmlFor="productStock" className="block text-sm font-medium text-gray-700">Initial Stock</label>
-                <input
-                  type="number"
-                  id="productStock"
-                  value={newProductStock}
-                  onChange={(e) => setNewProductStock(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., 100"
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="productBatchNumber" className="block text-sm font-medium text-gray-700">Batch Number (Optional)</label>
-                <input
-                  type="text"
-                  id="productBatchNumber"
-                  value={newProductBatchNumber}
-                  onChange={(e) => setNewProductBatchNumber(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., BATCH-2023-001"
-                />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="productStatus" className="block text-sm font-medium text-gray-700">Status</label>
-                <select
-                  id="productStatus"
-                  value={newProductStatus}
-                  onChange={(e) => setNewProductStatus(e.target.value)}
-                  className="input-field"
-                >
+                <label htmlFor="newProductStatus" className="label-field">Status</label>
+                <select id="newProductStatus" value={newProductStatus} onChange={(e) => setNewProductStatus(e.target.value)} className="input-field">
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
               <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowAddProductModal(false);
-                    setNewProductName('');
-                    setNewProductPrice('');
-                    setNewProductStock('');
-                    setNewProductBatchNumber('');
-                    setNewProductStatus('Active'); // Reset to default
-                    setErrorMessage(''); // Clear error when closing modal
-                    setSuccessMessage('');
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddNewProduct}
-                  className="btn-primary"
-                >
-                  Add Product
-                </button>
+                <button onClick={() => {
+                  setShowAddProductModal(false);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }} className="btn-secondary">Cancel</button>
+                <button onClick={handleAddNewProduct} className="btn-primary">Add Product</button>
               </div>
             </div>
           </div>
         )}
 
         {/* Edit Product Modal */}
-        {showEditProductModal && editingProduct && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="card w-full max-w-md">
+        {showEditProductModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
               <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Product</h2>
               <div className="mb-4">
-                <label htmlFor="editProductName" className="block text-sm font-medium text-gray-700">Product Name</label>
-                <input
-                  type="text"
-                  id="editProductName"
-                  value={editProductName}
-                  onChange={(e) => setEditProductName(e.target.value)}
-                  className="input-field"
-                />
+                <label htmlFor="editProductName" className="label-field">Product Name</label>
+                <input type="text" id="editProductName" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className="input-field" />
               </div>
               <div className="mb-4">
-                <label htmlFor="editProductPrice" className="block text-sm font-medium text-gray-700">Price (RM)</label>
-                <input
-                  type="number"
-                  id="editProductPrice"
-                  value={editProductPrice}
-                  onChange={(e) => setEditProductPrice(e.target.value)}
-                  className="input-field"
-                  step="0.01"
-                />
+                <label htmlFor="editProductPrice" className="label-field">Price (RM)</label>
+                <input type="number" id="editProductPrice" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} step="0.01" className="input-field" />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="editProductStock" className="label-field">Stock</label>
+                <input type="number" id="editProductStock" value={editProductStock} onChange={(e) => setEditProductStock(e.target.value)} min="0" className="input-field" />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="editProductBatchNumber" className="label-field">Batch Number</label>
+                <input type="text" id="editProductBatchNumber" value={editProductBatchNumber} onChange={(e) => setEditProductBatchNumber(e.target.value)} className="input-field" />
               </div>
               <div className="mb-6">
-                <label htmlFor="editProductStock" className="block text-sm font-medium text-gray-700">Current Stock</label>
-                <input
-                  type="number"
-                  id="editProductStock"
-                  value={editProductStock}
-                  onChange={(e) => setEditProductStock(e.target.value)}
-                  className="input-field"
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="editProductBatchNumber" className="block text-sm font-medium text-gray-700">Batch Number (Optional)</label>
-                <input
-                  type="text"
-                  id="editProductBatchNumber"
-                  value={editProductBatchNumber}
-                  onChange={(e) => setEditProductBatchNumber(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., BATCH-2023-001"
-                />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="editProductStatus" className="block text-sm font-medium text-gray-700">Status</label>
-                <select
-                  id="editProductStatus"
-                  value={editProductStatus}
-                  onChange={(e) => setEditProductStatus(e.target.value)}
-                  className="input-field"
-                >
+                <label htmlFor="editProductStatus" className="label-field">Status</label>
+                <select id="editProductStatus" value={editProductStatus} onChange={(e) => setEditProductStatus(e.target.value)} className="input-field">
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
               <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowEditProductModal(false);
-                    setEditingProduct(null);
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateProduct}
-                  className="btn-primary"
-                >
-                  Save Changes
-                </button>
+                <button onClick={() => {
+                  setShowEditProductModal(false);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }} className="btn-secondary">Cancel</button>
+                <button onClick={handleUpdateProduct} className="btn-primary">Update Product</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Add New User Modal (Admin Only) */}
-        {userRole === 'admin' && showAddUserModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="card w-full max-w-md">
+        {/* Add User Modal */}
+        {showAddUserModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
               <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New User</h2>
               <div className="mb-4">
-                <label htmlFor="newAddUserEmail" className="block text-sm font-medium text-gray-700">New User Email</label>
-                <input
-                  type="email"
-                  id="newAddUserEmail"
-                  value={newAddUserEmail}
-                  onChange={(e) => setNewAddUserEmail(e.target.value)}
-                  className="input-field"
-                  placeholder="user@example.com"
-                />
+                <label htmlFor="newAddUserEmail" className="label-field">Email</label>
+                <input type="email" id="newAddUserEmail" value={newAddUserEmail} onChange={(e) => setNewAddUserEmail(e.target.value)} placeholder="user@example.com" className="input-field" />
               </div>
               <div className="mb-4">
-                <label htmlFor="newAddUserPassword" className="block text-sm font-medium text-gray-700">New User Password</label>
-                <input
-                  type="password"
-                  id="newAddUserPassword"
-                  value={newAddUserPassword}
-                  onChange={(e) => setNewAddUserPassword(e.target.value)}
-                  className="input-field"
-                  placeholder="********"
-                />
+                <label htmlFor="newAddUserPassword" className="label-field">Password</label>
+                <input type="password" id="newAddUserPassword" value={newAddUserPassword} onChange={(e) => setNewAddUserPassword(e.target.value)} placeholder="password" className="input-field" />
               </div>
               <div className="mb-4">
-                <label htmlFor="newAddUserRole" className="block text-sm font-medium text-gray-700">New User Role</label>
-                <select
-                  id="newAddUserRole"
-                  value={newAddUserRole}
-                  onChange={(e) => setNewAddUserRole(e.target.value)}
-                  className="input-field"
-                >
+                <label htmlFor="newAddUserRole" className="label-field">Role</label>
+                <select id="newAddUserRole" value={newAddUserRole} onChange={(e) => setNewAddUserRole(e.target.value)} className="input-field">
                   <option value="cashier">Cashier</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
               <div className="mb-6">
-                <label htmlFor="adminPasswordForUserCreation" className="block text-sm font-medium text-gray-700">Your Admin Password (for confirmation)</label>
-                <input
-                  type="password"
-                  id="adminPasswordForUserCreation"
-                  value={adminPasswordForUserCreation}
-                  onChange={(e) => setAdminPasswordForUserCreation(e.target.value)}
-                  className="input-field"
-                  placeholder="********"
-                />
+                <label htmlFor="adminPasswordForUserCreation" className="label-field">Your Admin Password (for confirmation)</label>
+                <input type="password" id="adminPasswordForUserCreation" value={adminPasswordForUserCreation} onChange={(e) => setAdminPasswordForUserCreation(e.target.value)} placeholder="Your admin password" className="input-field" />
               </div>
               <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowAddUserModal(false);
-                    setNewAddUserEmail('');
-                    setNewAddUserPassword('');
-                    setNewAddUserRole('cashier');
-                    setAdminPasswordForUserCreation(''); // Clear admin password
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddNewUser}
-                  className="btn-primary"
-                >
-                  Create User
-                </button>
+                <button onClick={() => {
+                  setShowAddUserModal(false);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }} className="btn-secondary">Cancel</button>
+                <button onClick={handleAddNewUser} className="btn-primary">Add User</button>
               </div>
             </div>
           </div>
         )}
 
-
         {/* Edit User Role Modal */}
-        {userRole === 'admin' && showEditUserRoleModal && editingUserForRole && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="card w-full max-w-md">
+        {showEditUserRoleModal && editingUserForRole && (
+          <div className="modal-overlay">
+            <div className="modal-content">
               <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Role for {editingUserForRole.email || editingUserForRole.id.substring(0, 8) + '...'}</h2>
               <div className="mb-6">
                 <label htmlFor="userRoleSelect" className="block text-sm font-medium text-gray-700">Select New Role</label>
@@ -1642,6 +1766,205 @@ return (
             </div>
           </div>
         )}
+
+        {/* --- MODALS FOR SALES EDITING AND DELETING --- */}
+        {showEditSaleModal && editingSale && (
+          <div className="modal-overlay">
+            <div className="modal-content-lg">
+              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Sale Record (ID: {editingSale.id.substring(0, 8)}...)</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label htmlFor="editSaleDate" className="label-field">Sale Date</label>
+                  <input
+                    type="date"
+                    id="editSaleDate"
+                    value={editSaleDate}
+                    onChange={(e) => setEditSaleDate(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="editSaleCustomerName" className="label-field">Customer Name</label>
+                  <input
+                    type="text"
+                    id="editSaleCustomerName"
+                    value={editSaleCustomerName}
+                    onChange={(e) => setEditSaleCustomerName(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="editSalePaymentMethod" className="label-field">Payment Method</label>
+                  <select
+                    id="editSalePaymentMethod"
+                    value={editSalePaymentMethod}
+                    onChange={(e) => setEditSalePaymentMethod(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="DuitNowQR">DuitNowQR</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="editSaleRemark" className="label-field">Remark</label>
+                  <input
+                    type="text"
+                    id="editSaleRemark"
+                    value={editSaleRemark}
+                    onChange={(e) => setEditSaleRemark(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Sale Items</h3>
+              <div className="overflow-x-auto mb-6 max-h-60 overflow-y-auto border rounded-lg">
+                <table className="min-w-full">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
+                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount (RM)</th>
+                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Final Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {editSaleItems.map((item, index) => (
+                      <tr key={index}>
+                        <td className="py-2 px-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
+                        <td className="py-2 px-4 whitespace-nowrap">
+                          <input
+                            type="text"
+                            value={item.batchNumber}
+                            readOnly // Batch number is now read-only
+                            className="input-field-table bg-gray-100 cursor-not-allowed"
+                          />
+                        </td>
+                        <td className="py-2 px-4 whitespace-nowrap">
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => handleUpdateEditSaleItem(index, 'quantity', e.target.value)}
+                            min="1"
+                            className="input-field-table w-16"
+                          />
+                        </td>
+                        <td className="py-2 px-4 whitespace-nowrap">
+                          <input
+                            type="number"
+                            value={item.discountApplied}
+                            onChange={(e) => handleUpdateEditSaleItem(index, 'discountApplied', e.target.value)}
+                            min="0"
+                            step="0.01"
+                            className="input-field-table w-20"
+                          />
+                        </td>
+                        <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">
+                          RM{(item.discountedPrice * item.quantity).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end items-center text-lg font-bold text-gray-800">
+                New Total: RM{editSaleItems.reduce((sum, item) => sum + (item.discountedPrice * item.quantity), 0).toFixed(2)}
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowEditSaleModal(false);
+                    setEditingSale(null);
+                    setErrorMessage('');
+                    setSuccessMessage('');
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button onClick={handleConfirmEditSale} className="btn-primary">
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showConfirmEditSaleModal && pendingSaleUpdate && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Changes</h2>
+              <p className="text-gray-600 mb-6">Are you sure you want to update this sale record? This action cannot be undone.</p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmEditSaleModal(false);
+                    setShowEditSaleModal(true); // Go back to the edit form
+                    setPendingSaleUpdate(null);
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button onClick={confirmUpdateSale} className="btn-primary">
+                  Confirm Update
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {showConfirmDeleteModal && deletingSaleId && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Deletion</h2>
+              <p className="text-gray-600 mb-6">Are you sure you want to permanently delete this sale record? This action cannot be undone.</p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmDeleteModal(false);
+                    setDeletingSaleId(null);
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button onClick={confirmDeleteSale} className="btn-primary bg-red-600 hover:bg-red-700">
+                  Confirm Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* --- END NEW MODALS --- */}
       </div>
     );
-    }
+  };
+
+  // --- MAIN APP RENDER LOGIC ---
+  if (loading || !isAuthReady) {
+    return <Loader />;
+  }
+
+  if (!isAuthenticated) {
+    return <AuthForm />;
+  }
+
+  if (userRole === 'admin') {
+    return <AdminPanel />;
+  }
+
+  if (userRole === 'cashier') {
+    return <CashierPanel />;
+  }
+
+  // Fallback for unhandled states
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 font-[Inter]">
+      <p className="text-red-500">Authentication state is unexpected. Please try again.</p>
+    </div>
+  );
+}

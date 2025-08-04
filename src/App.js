@@ -8,6 +8,7 @@ import {
   signOut,
   sendPasswordResetEmail
 } from 'firebase/auth';
+
 import {
   getFirestore,
   doc,
@@ -19,10 +20,8 @@ import {
   collection,
   serverTimestamp,
   runTransaction,
-  getDoc,
-  getDocs,
-  query,
-  where
+  // eslint-disable-next-line 
+  getDoc, getDocs,  query, where
 } from 'firebase/firestore';
 
 // --- START LOCAL DEVELOPMENT FIXES ---
@@ -1061,7 +1060,7 @@ export default function App() {
   const AdminPanel = () => {
     const renderAdminDashboard = () => {
       const filteredSales = sales.filter(sale => {
-        const saleDate = sale.date;
+        //const saleDate = sale.date;
         const customerMatch = filterCustomerName.toLowerCase() === '' || sale.customerName.toLowerCase().includes(filterCustomerName.toLowerCase());
         const paymentMatch = filterPaymentMethod === '' || sale.paymentMethod === filterPaymentMethod;
         return customerMatch && paymentMatch 

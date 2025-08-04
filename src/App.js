@@ -19,7 +19,10 @@ import {
   collection,
   serverTimestamp,
   runTransaction,
-  getDoc
+  getDoc,
+  getDocs,
+  query,
+  where
 } from 'firebase/firestore';
 
 // --- START LOCAL DEVELOPMENT FIXES ---
@@ -77,14 +80,12 @@ export default function App() {
   // Auth states for login form
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRoleAttempt, setSelectedRoleAttempt] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // New states for cashier panel customer details
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
-  const [remark, setRemark] = useState(''); // New state for sale remark
 
   // New states for User Management (Admin Only)
   const [usersInSystem, setUsersInSystem] = useState([]);
@@ -113,7 +114,7 @@ export default function App() {
   const [showConfirmEditSaleModal, setShowConfirmEditSaleModal] = useState(false);
   const [pendingSaleUpdate, setPendingSaleUpdate] = useState(null);
   // --- END NEW STATES ---
-  
+
   // --- NEW STATES FOR DELETING SALES HISTORY ---
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [deletingSaleId, setDeletingSaleId] = useState(null);
@@ -122,9 +123,11 @@ export default function App() {
   const [expandedSaleId, setExpandedSaleId] = useState(null); // Track which sales row is expanded
   const [filterCustomerName, setFilterCustomerName] = useState('');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
   
+  // --- NEW STATES FOR DELETING USERS ---
+  const [showConfirmDeleteUserModal, setShowConfirmDeleteUserModal] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState(null);
+
   // Custom CSS for better styling and modal functionality
   const customStyles = `
     .modal-overlay {
@@ -174,7 +177,7 @@ export default function App() {
       from { transform: translateY(-50px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
-    
+
     .input-field {
       width: 100%;
       padding: 0.75rem;
@@ -184,7 +187,7 @@ export default function App() {
       transition: all 0.2s ease-in-out;
       box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
     }
-    
+
     .input-field:focus {
       outline: none;
       border-color: #6366f1;
@@ -238,7 +241,7 @@ export default function App() {
       border-bottom: 2px solid transparent;
       transition: all 0.2s ease-in-out;
     }
-    
+
     .tab-button:hover {
       color: #4b5563;
     }
@@ -280,6 +283,21 @@ export default function App() {
       border: 1px solid #d1d5db;
       width: 100%;
       font-size: 0.875rem;
+    }
+
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background-color: #f3f4f6;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.75rem;
+      color: #6b7280;
+      background-color: #f9fafb;
     }
 
   `;
@@ -360,8 +378,6 @@ export default function App() {
 
     return () => {
       // Clean up on component unmount (optional, but good practice)
-      // This part ensures that if the component unmounts and remounts (e.g., hot reload),
-      // the scripts/links are not duplicated.
       if (document.head.contains(tailwindScript)) {
         document.head.removeChild(tailwindScript);
       }
@@ -469,8 +485,8 @@ export default function App() {
   const handleAuthAction = async () => {
     setErrorMessage('');
     setSuccessMessage('');
-    if (!auth || !selectedRoleAttempt || !email.trim() || !password.trim()) {
-      setErrorMessage("Authentication service not ready, role not selected, or email/password missing.");
+    if (!auth || !email.trim() || !password.trim()) {
+      setErrorMessage("Authentication service not ready, or email/password missing.");
       return;
     }
 
@@ -478,7 +494,6 @@ export default function App() {
       await signInWithEmailAndPassword(auth, email, password);
       setEmail('');
       setPassword('');
-      setSelectedRoleAttempt(null);
     } catch (error) {
       console.error("Auth error:", error);
       setErrorMessage(error.message);
@@ -530,15 +545,12 @@ export default function App() {
     setSuccessMessage('');
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
-
       if (existingItem) {
         if (existingItem.quantity + 1 > product.stock) {
           setErrorMessage(`Not enough stock for ${product.name}. Only ${product.stock} available.`);
           return prevCart;
         }
-        return prevCart.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+        return prevCart.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item );
       } else {
         if (product.stock < 1) {
           setErrorMessage(`No stock available for ${product.name}.`);
@@ -556,7 +568,6 @@ export default function App() {
     setCart(prevCart => {
       const productInList = products.find(p => p.id === productId);
       if (!productInList) return prevCart;
-
       if (newQuantity <= 0) {
         return prevCart.filter(item => item.id !== productId);
       }
@@ -564,9 +575,7 @@ export default function App() {
         setErrorMessage(`Cannot add more than available stock for ${productInList.name}. Max: ${productInList.stock}`);
         return prevCart;
       }
-      return prevCart.map(item =>
-        item.id === productId ? { ...item, quantity: newQuantity } : item
-      );
+      return prevCart.map(item => item.id === productId ? { ...item, quantity: newQuantity } : item );
     });
   };
 
@@ -605,7 +614,6 @@ export default function App() {
     setCustomerName('');
     setPaymentMethod('Cash');
     setPurchaseDate(new Date().toISOString().split('T')[0]);
-    setRemark('');
   };
 
   const checkout = async () => {
@@ -635,16 +643,14 @@ export default function App() {
         // Save sales to a public collection accessible by all admins
         const salesCollectionRef = collection(db, `artifacts/${window.__app_id}/public/data/sales`);
         console.log("Saving sale to path:", `artifacts/${window.__app_id}/public/data/sales`); // Log save path
-        const productUpdates = [];
 
+        const productUpdates = [];
         for (const item of cart) {
           const productRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, item.id);
           const productDoc = await transaction.get(productRef);
-
           if (!productDoc.exists()) {
             throw new Error(`Product "${item.name}" not found in inventory.`);
           }
-
           const currentStock = productDoc.data().stock || 0;
           if (currentStock < item.quantity) {
             throw new Error(`Insufficient stock for "${item.name}". Available: ${currentStock}, Needed: ${item.quantity}`);
@@ -659,74 +665,84 @@ export default function App() {
         const saleItems = cart.map(item => {
           const originalPrice = item.price;
           const discountApplied = item.discountApplied || 0;
-          const discountedPrice = Math.max(0, originalPrice - discountApplied); // Ensure price doesn't go negative
+          const discountedPrice = Math.max(0, originalPrice - discountApplied);
           return {
-            productId: item.id,
+            id: item.id,
             name: item.name,
-            originalPrice: originalPrice,
-            discountedPrice: parseFloat(discountedPrice.toFixed(2)),
-            discountApplied: parseFloat(discountApplied.toFixed(2)), // Store the applied discount
             quantity: item.quantity,
-            batchNumber: item.batchNumber || '' // Include batch number in sale item
+            originalPrice,
+            discountApplied,
+            finalPrice: discountedPrice,
+            totalPrice: discountedPrice * item.quantity,
+            batchNumber: item.batchNumber // Include batch number in sale record
           };
         });
 
-        const finalSaleTotal = saleItems.reduce((sum, item) => sum + item.discountedPrice * item.quantity, 0);
-        const totalDiscount = saleItems.reduce((sum, item) => sum + item.discountApplied * item.quantity, 0);
-
-        transaction.set(doc(salesCollectionRef), {
+        const newSale = {
+          customerName,
+          paymentMethod,
+          date: purchaseDate,
+          remark: '', // Remark field is for admin only, so we save it as an empty string from cashier
           items: saleItems,
-          total: parseFloat(finalSaleTotal.toFixed(2)),
-          totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+          total: total,
           timestamp: serverTimestamp(),
-          customerName: customerName.trim(),
-          paymentMethod: paymentMethod,
-          purchaseDate: purchaseDate,
-          remark: remark.trim(), // New remark field
-          soldBy: auth.currentUser?.email || 'Unknown Cashier', // Record who made the sale
-          soldById: userId, // Record the ID of who made the sale
-        });
-      });
+          cashierId: userId, // Record the cashier who made the sale
+        };
 
-      clearSale(); // Use the new clear function
-      setErrorMessage('');
-      setSuccessMessage('Checkout successful!');
+        await addDoc(salesCollectionRef, newSale);
+
+        setSuccessMessage("Sale completed successfully!");
+        clearSale();
+      });
     } catch (error) {
-      console.error("Error during checkout transaction:", error);
+      console.error("Checkout transaction failed:", error);
       setErrorMessage(`Checkout failed: ${error.message}`);
     }
   };
 
-  const handleAddNewProduct = async () => {
-    if (!newProductName.trim() || isNaN(parseFloat(newProductPrice)) || parseFloat(newProductPrice) <= 0 || isNaN(parseInt(newProductStock)) || parseInt(newProductStock) < 0) {
-      setErrorMessage("Please enter a valid product name, a positive price, and a non-negative stock quantity.");
+
+  // --- ADMIN PANEL HANDLERS ---
+
+  const handleAddProduct = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!newProductName.trim() || !newProductPrice.trim() || !newProductStock.trim()) {
+      setErrorMessage('Product name, price, and stock are required.');
       return;
     }
-    if (!db) {
+    const price = parseFloat(newProductPrice);
+    const stock = parseInt(newProductStock, 10);
+    if (isNaN(price) || price < 0 || isNaN(stock) || stock < 0) {
+      setErrorMessage('Price and stock must be non-negative numbers.');
+      return;
+    }
+    if (!db || !userId) {
       setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
-
     try {
       const productsCollectionRef = collection(db, `artifacts/${window.__app_id}/public/data/products`);
-      await addDoc(productsCollectionRef, {
-        name: newProductName.trim(),
-        price: parseFloat(newProductPrice),
-        stock: parseInt(newProductStock),
-        batchNumber: newProductBatchNumber.trim(),
-        status: newProductStatus, // Save new product status
-      });
+      const newProduct = {
+        name: newProductName,
+        price,
+        stock,
+        batchNumber: newProductBatchNumber,
+        status: newProductStatus, // Save the new product status
+        createdAt: serverTimestamp(),
+        lastUpdatedBy: userId,
+      };
+      await addDoc(productsCollectionRef, newProduct);
+      setSuccessMessage('Product added successfully!');
       setNewProductName('');
       setNewProductPrice('');
       setNewProductStock('');
       setNewProductBatchNumber('');
-      setNewProductStatus('Active'); // Reset to default
+      setNewProductStatus('Active');
       setShowAddProductModal(false);
-      setErrorMessage('');
-      setSuccessMessage('Product added successfully!');
     } catch (error) {
       console.error("Error adding product:", error);
-      setErrorMessage("Failed to add product. Please try again.");
+      setErrorMessage("Failed to add product: " + error.message);
     }
   };
 
@@ -736,105 +752,108 @@ export default function App() {
     setEditProductPrice(product.price);
     setEditProductStock(product.stock);
     setEditProductBatchNumber(product.batchNumber || '');
-    setEditProductStatus(product.status || 'Active'); // Set existing status or default to Active
+    setEditProductStatus(product.status || 'Active');
     setShowEditProductModal(true);
   };
 
-  const handleUpdateProduct = async () => {
-    if (!editingProduct || !editProductName.trim() || isNaN(parseFloat(editProductPrice)) || parseFloat(editProductPrice) <= 0 || isNaN(parseInt(editProductStock)) || parseInt(editProductStock) < 0) {
-      setErrorMessage("Please enter valid product details for editing.");
+  const handleEditProduct = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (!editingProduct) {
+      setErrorMessage("No product selected for editing.");
       return;
     }
-    if (!db) {
+    if (!editProductName.trim() || !editProductPrice.trim() || !editProductStock.trim()) {
+      setErrorMessage('Product name, price, and stock are required.');
+      return;
+    }
+    const price = parseFloat(editProductPrice);
+    const stock = parseInt(editProductStock, 10);
+    if (isNaN(price) || price < 0 || isNaN(stock) || stock < 0) {
+      setErrorMessage('Price and stock must be non-negative numbers.');
+      return;
+    }
+    if (!db || !userId) {
       setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
     try {
-      const productDocRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, editingProduct.id);
-      await updateDoc(productDocRef, {
-        name: editProductName.trim(),
-        price: parseFloat(editProductPrice),
-        stock: parseInt(editProductStock),
-        batchNumber: editProductBatchNumber.trim(),
+      const productRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, editingProduct.id);
+      await updateDoc(productRef, {
+        name: editProductName,
+        price,
+        stock,
+        batchNumber: editProductBatchNumber,
         status: editProductStatus, // Update product status
+        lastUpdatedBy: userId,
       });
+      setSuccessMessage('Product updated successfully!');
       setShowEditProductModal(false);
       setEditingProduct(null);
-      setErrorMessage('');
-      setSuccessMessage('Product updated successfully!');
     } catch (error) {
       console.error("Error updating product:", error);
-      setErrorMessage("Failed to update product. Please try again.");
+      setErrorMessage("Failed to update product: " + error.message);
     }
   };
 
   const handleDeleteProduct = async (productId) => {
-    if (!db) {
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (!db || !userId) {
       setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
     try {
-      const productDocRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, productId);
-      await deleteDoc(productDocRef);
-      setErrorMessage('');
+      const productRef = doc(db, `artifacts/${window.__app_id}/public/data/products`, productId);
+      await deleteDoc(productRef);
       setSuccessMessage('Product deleted successfully!');
     } catch (error) {
       console.error("Error deleting product:", error);
-      setErrorMessage("Failed to delete product. Please try again.");
+      setErrorMessage("Failed to delete product: " + error.message);
     }
   };
 
-  // --- User Management Handlers (Admin Only) ---
-  const handleAddNewUser = async () => {
+  const handleCreateUser = async () => {
     setErrorMessage('');
     setSuccessMessage('');
-    if (!auth || !db || !newAddUserEmail.trim() || !newAddUserPassword.trim() || !newAddUserRole.trim() || !adminPasswordForUserCreation.trim()) {
-      setErrorMessage("Please fill in all fields for the new user, including your admin password.");
+
+    if (!newAddUserEmail.trim() || !newAddUserPassword.trim() || !newAddUserRole.trim() || !adminPasswordForUserCreation.trim()) {
+      setErrorMessage("All fields are required to create a new user.");
       return;
     }
-    const currentAdminUser = auth.currentUser; // Get the current admin's user object
-    if (!currentAdminUser || !currentAdminUser.email) {
-      setErrorMessage("Admin user session invalid. Please log out and back in.");
+
+    if (!auth || !db) {
+      setErrorMessage("Authentication or Database service is not ready.");
       return;
     }
-    const currentAdminEmail = currentAdminUser.email;
+
     try {
-      // 1. Create user in Firebase Authentication.
-      // This action will automatically log in the new user, logging out the current admin.
+      // First, re-authenticate the admin to confirm they have permission to create a user.
+      const adminCredential = signInWithEmailAndPassword(auth, auth.currentUser.email, adminPasswordForUserCreation);
+      await adminCredential;
+
+      // Create the new user with email and password
       const userCredential = await createUserWithEmailAndPassword(auth, newAddUserEmail, newAddUserPassword);
-      const newUserUid = userCredential.user.uid;
+      const newUserId = userCredential.user.uid;
 
-      // 2. Immediately re-authenticate the original administrator.
-      // This is crucial to restore the admin's session.
-      // The `auth` object now refers to the new user, so we need to sign them out first
-      // before signing in the admin.
-      await signOut(auth); // Sign out the newly created user
-      await signInWithEmailAndPassword(auth, currentAdminEmail, adminPasswordForUserCreation); // Sign in the admin
-
-      // 3. Assign role to the new user in Firestore.
-      // This operation now happens while the original admin is authenticated.
-      const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, newUserUid);
+      // Assign the role in Firestore
+      const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, newUserId);
       await setDoc(userRoleDocRef, {
         role: newAddUserRole,
-        email: newAddUserEmail.trim()
+        email: newAddUserEmail,
+        createdAt: serverTimestamp(),
       });
+
+      setSuccessMessage(`New ${newAddUserRole} user created successfully!`);
+      // Clear form states
       setNewAddUserEmail('');
       setNewAddUserPassword('');
-      setNewAddUserRole('cashier'); // Reset to default
-      setAdminPasswordForUserCreation(''); // Clear admin password
+      setNewAddUserRole('cashier');
+      setAdminPasswordForUserCreation('');
       setShowAddUserModal(false);
-      setSuccessMessage(`New user ${newAddUserEmail} (${newAddUserRole}) added successfully!`);
     } catch (error) {
-      console.error("Error adding new user:", error);
-      // If the error is during signInWithEmailAndPassword for the admin,
-      // it means the admin's session couldn't be restored.
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        setErrorMessage(`Failed to re-authenticate admin: ${error.message}. You have been logged out.`);
-        // Ensure admin is logged out if re-auth fails
-        await signOut(auth);
-      } else {
-        setErrorMessage(`Failed to add new user: ${error.message}`);
-      }
+      console.error("User creation error:", error);
+      setErrorMessage("Failed to create user: " + error.message);
     }
   };
 
@@ -844,961 +863,1125 @@ export default function App() {
     setShowEditUserRoleModal(true);
   };
 
-  const handleUpdateUserRole = async () => {
+  const handleEditUserRole = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
     if (!editingUserForRole || !newRoleForUser.trim()) {
-      setErrorMessage("Please select a user and a role.");
+      setErrorMessage("User or new role not selected.");
       return;
     }
+
     if (!db) {
-      setErrorMessage("Database not ready. Please wait or refresh.");
+      setErrorMessage("Database not ready.");
       return;
     }
+
     try {
       const userRoleDocRef = doc(db, `artifacts/${window.__app_id}/user_roles`, editingUserForRole.id);
       await updateDoc(userRoleDocRef, {
-        role: newRoleForUser
+        role: newRoleForUser,
+        lastUpdated: serverTimestamp(),
       });
+      setSuccessMessage(`Role for ${editingUserForRole.email} updated to ${newRoleForUser} successfully.`);
       setShowEditUserRoleModal(false);
       setEditingUserForRole(null);
       setNewRoleForUser('');
-      setErrorMessage('');
-      setSuccessMessage(`Role for ${editingUserForRole.email || editingUserForRole.id.substring(0, 8) + '...'} updated successfully!`);
     } catch (error) {
       console.error("Error updating user role:", error);
-      setErrorMessage("Failed to update user role. Please try again.");
+      setErrorMessage("Failed to update user role: " + error.message);
     }
   };
 
-
-  // --- SALES HISTORY EDITING HANDLERS (ADMIN ONLY) ---
-
-  const openEditSaleModal = (sale) => {
+  const openConfirmDeleteUserModal = (userIdToDelete) => {
+    if (userIdToDelete === userId) {
+      setErrorMessage("You cannot delete your own account.");
+      return;
+    }
+    setDeletingUserId(userIdToDelete);
+    setShowConfirmDeleteUserModal(true);
+  };
+  
+  const handleDeleteUser = async () => {
     setErrorMessage('');
     setSuccessMessage('');
-    setEditingSale(sale);
-    setEditSaleDate(sale.purchaseDate);
-    setEditSaleCustomerName(sale.customerName);
-    setEditSalePaymentMethod(sale.paymentMethod);
-    setEditSaleRemark(sale.remark || '');
-    setEditSaleItems(sale.items.map(item => ({
-      ...item,
-      // Ensure prices are numbers for calculations
-      originalPrice: parseFloat(item.originalPrice),
-      discountedPrice: parseFloat(item.discountedPrice),
-      discountApplied: parseFloat(item.discountApplied),
-    })));
-    setShowEditSaleModal(true);
+    if (!deletingUserId) {
+      setErrorMessage("No user selected for deletion.");
+      return;
+    }
+    if (!db || !userId) {
+      setErrorMessage("Database not ready. Please wait or refresh.");
+      return;
+    }
+    // Note: We are only deleting the user's role document from Firestore.
+    // Deleting the user from Firebase Authentication requires re-authentication
+    // with a recent login, which is not implemented here. This is a common
+    // security consideration.
+    try {
+      const userRef = doc(db, `artifacts/${window.__app_id}/user_roles`, deletingUserId);
+      await deleteDoc(userRef);
+      setSuccessMessage('User role deleted successfully!');
+      setShowConfirmDeleteUserModal(false);
+      setDeletingUserId(null);
+    } catch (error) {
+      console.error("Error deleting user role:", error);
+      setErrorMessage("Failed to delete user role: " + error.message);
+    }
   };
 
-  const handleUpdateEditSaleItem = (index, field, value) => {
-    setEditSaleItems(prevItems => {
-      const newItems = [...prevItems];
-      const itemToUpdate = { ...newItems[index]
-      };
-
-      if (field === 'quantity') {
-        const newQuantity = parseInt(value);
-        if (isNaN(newQuantity) || newQuantity < 1) {
-          setErrorMessage("Quantity must be a positive number.");
-          return prevItems;
-        }
-        itemToUpdate.quantity = newQuantity;
-      } else if (field === 'discountApplied') {
-        const newDiscount = parseFloat(value);
-        if (isNaN(newDiscount) || newDiscount < 0) {
-          setErrorMessage("Discount must be a non-negative number.");
-          return prevItems;
-        }
-        if (newDiscount > itemToUpdate.originalPrice) {
-          setErrorMessage("Discount cannot be more than the item's price.");
-          return prevItems;
-        }
-        itemToUpdate.discountApplied = newDiscount;
-        itemToUpdate.discountedPrice = Math.max(0, itemToUpdate.originalPrice - newDiscount);
-      } else if (field === 'batchNumber') {
-        itemToUpdate.batchNumber = value;
-      }
-
-      newItems[index] = itemToUpdate;
-      return newItems;
-    });
-  };
-
-  const handleConfirmEditSale = () => {
+  const confirmDeleteSale = async () => {
     setErrorMessage('');
     setSuccessMessage('');
-
-    if (!editSaleCustomerName.trim() || !editSaleDate || !editSalePaymentMethod) {
-      setErrorMessage("Please fill in all required sale details.");
+    if (!deletingSaleId) {
+      setErrorMessage("No sale selected for deletion.");
       return;
     }
-    if (editSaleItems.length === 0) {
-      setErrorMessage("A sale must have at least one item.");
+    if (!db || !userId) {
+      setErrorMessage("Database not ready. Please wait or refresh.");
       return;
     }
-
-    const newTotal = editSaleItems.reduce((sum, item) => sum + item.discountedPrice * item.quantity, 0);
-    const newTotalDiscount = editSaleItems.reduce((sum, item) => sum + item.discountApplied * item.quantity, 0);
-
-    const updatedSale = {
-      ...editingSale,
-      customerName: editSaleCustomerName.trim(),
-      purchaseDate: editSaleDate,
-      paymentMethod: editSalePaymentMethod,
-      remark: editSaleRemark.trim(),
-      items: editSaleItems,
-      total: parseFloat(newTotal.toFixed(2)),
-      totalDiscount: parseFloat(newTotalDiscount.toFixed(2)),
-    };
-
-    setPendingSaleUpdate(updatedSale);
-    setShowEditSaleModal(false); // Hide the edit form
-    setShowConfirmEditSaleModal(true); // Show the confirmation modal
-  };
-
-  const confirmUpdateSale = async () => {
-    if (!db || !pendingSaleUpdate) {
-      setErrorMessage("Database or pending sale data is not ready.");
-      setShowConfirmEditSaleModal(false);
-      setShowEditSaleModal(false);
-      return;
-    }
-    const appId = window.__app_id;
-    const saleDocRef = doc(db, `artifacts/${appId}/public/data/sales`, pendingSaleUpdate.id);
 
     try {
-      await updateDoc(saleDocRef, {
-        customerName: pendingSaleUpdate.customerName,
-        purchaseDate: pendingSaleUpdate.purchaseDate,
-        paymentMethod: pendingSaleUpdate.paymentMethod,
-        remark: pendingSaleUpdate.remark,
-        items: pendingSaleUpdate.items.map(item => {
-          // Clean up the item objects for saving
-          const {
-            originalPrice,
-            discountedPrice,
-            discountApplied,
-            quantity,
-            batchNumber,
-            name,
-            productId
-          } = item;
-          return {
-            originalPrice,
-            discountedPrice,
-            discountApplied,
-            quantity,
-            batchNumber,
-            name,
-            productId
-          };
-        }),
-        total: pendingSaleUpdate.total,
-        totalDiscount: pendingSaleUpdate.totalDiscount,
-        updatedAt: serverTimestamp(),
-        updatedBy: auth.currentUser?.email || 'Unknown Admin',
-      });
-      setSuccessMessage("Sale record updated successfully!");
+      const saleRef = doc(db, `artifacts/${window.__app_id}/public/data/sales`, deletingSaleId);
+      await deleteDoc(saleRef);
+      setSuccessMessage('Sale record deleted successfully!');
+      setShowConfirmDeleteModal(false);
+      setDeletingSaleId(null);
     } catch (error) {
-      console.error("Error updating sale record:", error);
-      setErrorMessage(`Failed to update sale record: ${error.message}`);
-    } finally {
-      // Clean up state regardless of success or failure
-      setShowConfirmEditSaleModal(false);
-      setEditingSale(null);
-      setPendingSaleUpdate(null);
+      console.error("Error deleting sale record:", error);
+      setErrorMessage("Failed to delete sale record: " + error.message);
     }
   };
-  
-  // --- NEW HANDLERS FOR DELETING SALES HISTORY ---
-  const handleDeleteSale = (saleId) => {
-      setErrorMessage('');
-      setSuccessMessage('');
-      setDeletingSaleId(saleId);
-      setShowConfirmDeleteModal(true);
-  };
-  
-  const confirmDeleteSale = async () => {
-      if (!db || !deletingSaleId) {
-          setErrorMessage("Database or sale ID not ready.");
-          setShowConfirmDeleteModal(false);
-          return;
-      }
-      const appId = window.__app_id;
-      const saleDocRef = doc(db, `artifacts/${appId}/public/data/sales`, deletingSaleId);
-      
-      try {
-          await deleteDoc(saleDocRef);
-          setSuccessMessage("Sale record deleted successfully!");
-      } catch (error) {
-          console.error("Error deleting sale record:", error);
-          setErrorMessage(`Failed to delete sale record: ${error.message}`);
-      } finally {
-          setShowConfirmDeleteModal(false);
-          setDeletingSaleId(null);
-      }
-  };
 
-  // --- HELPER FUNCTION FOR SALES HISTORY FILTERING ---
-  const getFilteredSales = () => {
-    return sales.filter(sale => {
-      // Customer Name filter
-      const customerNameMatch = filterCustomerName.trim() === '' ||
-        (sale.customerName && sale.customerName.toLowerCase().includes(filterCustomerName.toLowerCase()));
 
-      // Payment Method filter
-      const paymentMethodMatch = filterPaymentMethod === '' ||
-        (sale.paymentMethod && sale.paymentMethod === filterPaymentMethod);
+  // --- UI Components ---
+  const Loader = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 font-[Inter]">
+      <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-indigo-600"></div>
+    </div>
+  );
 
-      // Date Range filter
-      const saleDate = new Date(sale.purchaseDate);
-      const start = filterStartDate ? new Date(filterStartDate) : null;
-      const end = filterEndDate ? new Date(filterEndDate) : null;
+  const AuthForm = () => {
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      handleAuthAction();
+    };
 
-      const dateMatch = (!start || saleDate >= start) && (!end || saleDate <= end);
-      
-      return customerNameMatch && paymentMethodMatch && dateMatch;
-    });
-  };
-  
-  // --- RENDERING COMPONENTS ---
-
-  const Message = ({ message, type }) => {
-    const color = type === 'error' ? 'text-red-800 bg-red-100' : 'text-green-800 bg-green-100';
-    if (!message) return null;
     return (
-      <div className={`p-3 rounded-lg text-sm font-medium ${color}`}>
-        {message}
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 font-[Inter] p-4">
+        <style>{customStyles}</style>
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="text-center mb-6">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Hazwan Alani's Kitchen</h1>
+            <h2 className="text-2xl font-semibold text-center text-gray-800 mb-2">Welcome Back</h2>
+            <p className="text-center text-gray-500">Sign in to your account</p>
+          </div>
+
+          {errorMessage && (
+            <div className="p-3 mb-4 text-sm text-white bg-red-500 rounded-lg text-center">
+              {errorMessage}
+            </div>
+          )}
+          {successMessage && (
+            <div className="p-3 mb-4 text-sm text-white bg-green-500 rounded-lg text-center">
+              {successMessage}
+            </div>
+          )}
+
+          {showForgotPassword ? (
+            <form onSubmit={(e) => { e.preventDefault(); handlePasswordReset(); }} className="space-y-4">
+              <div>
+                <label className="label-field" htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="input-field"
+                  required
+                />
+              </div>
+              <button type="submit" className="w-full btn-primary">
+                Send Reset Email
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(false)}
+                className="w-full text-center text-sm text-indigo-600 hover:underline mt-4"
+              >
+                Back to Sign In
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="label-field" htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="input-field"
+                  required
+                />
+              </div>
+              <div>
+                <label className="label-field" htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="input-field"
+                  required
+                />
+              </div>
+              <button type="submit" className="w-full btn-primary">
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="w-full text-center text-sm text-gray-500 hover:text-indigo-600 transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </form>
+          )}
+        </div>
+        <footer className="footer mt-6">
+          &copy; 2024 MHA POS System created by Muhammad Hazwan Arif
+        </footer>
       </div>
     );
   };
 
-  const Loader = () => (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-    </div>
-  );
-
-  const AuthForm = () => (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 font-[Inter]">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-2xl">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">MHA POS System</h1>
-        <Message message={errorMessage} type="error" />
-        <Message message={successMessage} type="success" />
-
-        {showForgotPassword ? (
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-700 mb-4 text-center">Forgot Password</h2>
-            <p className="text-sm text-gray-600 mb-4 text-center">
-              Enter your email to receive a password reset link.
-            </p>
-            <div className="mb-4">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email Address"
-                className="input-field"
-              />
-            </div>
-            <button onClick={handlePasswordReset} className="btn-primary w-full mb-3">Send Reset Email</button>
-            <button
-              onClick={() => {
-                setShowForgotPassword(false);
-                setErrorMessage('');
-                setSuccessMessage('');
-              }}
-              className="btn-secondary w-full"
-            >
-              Back to Login
-            </button>
-          </div>
-        ) : (
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-700 mb-4 text-center">Log In</h2>
-            <div className="mb-4">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email Address"
-                className="input-field"
-              />
-            </div>
-            <div className="mb-6">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="input-field"
-              />
-            </div>
-            <div className="flex flex-col space-y-3">
-              <button onClick={() => {
-                setSelectedRoleAttempt('admin');
-                handleAuthAction();
-              }} className="btn-primary">
-                Log In as Admin
-              </button>
-              <button onClick={() => {
-                setSelectedRoleAttempt('cashier');
-                handleAuthAction();
-              }} className="btn-secondary">
-                Log In as Cashier
-              </button>
-            </div>
-            <div className="text-center mt-4">
-              <button
-                onClick={() => {
-                  setShowForgotPassword(true);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Forgot Password?
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const CashierPanel = () => (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-100 font-[Inter]">
-      {/* Product List */}
-      <div className="w-full md:w-3/5 p-6 overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Products</h1>
-          <div className="flex items-center space-x-4">
-            <span className="text-gray-600">Signed in as: <span className="font-semibold">{auth.currentUser?.email}</span></span>
-            <button onClick={handleSignOut} className="btn-secondary">Sign Out</button>
-          </div>
-        </div>
-        <Message message={errorMessage} type="error" />
-        <Message message={successMessage} type="success" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {products.map(product => (
-            <div key={product.id} className="bg-white p-4 rounded-xl shadow-lg flex flex-col justify-between transform transition duration-300 hover:scale-105">
-              <div className="flex-grow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">{product.name}</h3>
-                <p className="text-sm text-gray-600">Batch: {product.batchNumber || 'N/A'}</p>
-                <p className="text-sm text-gray-600">Stock: {product.stock}</p>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-2xl font-bold text-indigo-600">
-                  RM{product.price ? product.price.toFixed(2) : '0.00'}
-                </span>
-                <button
-                  onClick={() => addProductToCart(product)}
-                  className="btn-primary"
-                  disabled={product.stock <= 0}
-                >
-                  Add to Cart
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Cart & Checkout */}
-      <div className="w-full md:w-2/5 p-6 bg-gray-50 flex flex-col h-full">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Checkout</h2>
-        <div className="flex-grow overflow-y-auto">
-          {cart.length === 0 ? (
-            <div className="text-center text-gray-500 py-10">Cart is empty.</div>
-          ) : (
-            cart.map(item => (
-              <div key={item.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm mb-4">
-                <div className="flex-grow">
-                  <h3 className="font-semibold text-gray-800">{item.name}</h3>
-                  <p className="text-sm text-gray-500">Price: RM{(item.price - (item.discountApplied || 0)).toFixed(2)}</p>
-                  <p className="text-sm text-gray-500">Batch: {item.batchNumber || 'N/A'}</p>
-                  <div className="mt-2 text-sm text-gray-600">
-                    <label className="block">Discount (RM):</label>
-                    <input
-                      type="number"
-                      value={item.discountApplied}
-                      onChange={(e) => updateCartItemDiscount(item.id, e.target.value)}
-                      min="0"
-                      step="0.01"
-                      className="input-field-small"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value))}
-                    min="1"
-                    className="w-16 text-center border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-9V5a1 1 0 00-1-1H9a1 1 0 00-1 1v2m-6 0h14" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Customer Details & Actions */}
-        <div className="mt-6 pt-6 border-t-2 border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor="customerName" className="label-field">Customer Name</label>
-              <input
-                id="customerName"
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Enter customer name"
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label htmlFor="paymentMethod" className="label-field">Payment Method</label>
-              <select
-                id="paymentMethod"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="input-field"
-              >
-                <option value="Cash">Cash</option>
-                <option value="DuitNowQR">DuitNowQR</option>
-              </select>
-            </div>
-            <div className="col-span-1 md:col-span-2">
-              <label htmlFor="remark" className="label-field">Remark</label>
-              <input
-                id="remark"
-                type="text"
-                value={remark}
-                onChange={(e) => setRemark(e.target.value)}
-                placeholder="Add a remark (optional)"
-                className="input-field"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-2xl font-bold text-gray-800">Total:</span>
-            <span className="text-3xl font-extrabold text-indigo-600">RM{total.toFixed(2)}</span>
-          </div>
-          <button onClick={checkout} className="btn-primary w-full mb-3" disabled={cart.length === 0}>
-            Complete Sale
-          </button>
-          <button onClick={clearSale} className="btn-secondary w-full">
-            Clear Sale
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   const AdminPanel = () => {
-    // Get filtered sales data based on filter states
-    const filteredSales = getFilteredSales();
+    const renderAdminDashboard = () => {
+      const filteredSales = sales.filter(sale => {
+        const saleDate = sale.date;
+        const customerMatch = filterCustomerName.toLowerCase() === '' || sale.customerName.toLowerCase().includes(filterCustomerName.toLowerCase());
+        const paymentMatch = filterPaymentMethod === '' || sale.paymentMethod === filterPaymentMethod;
+        return customerMatch && paymentMatch 
+      });
 
-    return (
-      <div className="min-h-screen bg-gray-100 font-[Inter] flex flex-col">
-        {/* Add the custom styles here */}
-        <style>{customStyles}</style>
-        <header className="bg-white shadow-md p-4 flex flex-col sm:flex-row justify-between items-center sticky top-0 z-10">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2 sm:mb-0">Admin Dashboard</h1>
-          <div className="flex items-center space-x-4">
-            <span className="text-gray-600 hidden md:block">Signed in as: <span className="font-semibold">{auth.currentUser?.email}</span></span>
-            <button onClick={handleSignOut} className="btn-secondary">Sign Out</button>
-          </div>
-        </header>
+      const handleOpenEditSaleModal = (sale) => {
+        setEditingSale(sale);
+        setEditSaleDate(sale.date);
+        setEditSaleCustomerName(sale.customerName);
+        setEditSalePaymentMethod(sale.paymentMethod);
+        setEditSaleRemark(sale.remark || '');
+        setEditSaleItems(sale.items.map(item => ({
+            ...item,
+            originalPrice: item.originalPrice || 0,
+            discountApplied: item.discountApplied || 0,
+            totalPrice: (item.originalPrice - (item.discountApplied || 0)) * item.quantity
+        })));
+        setShowEditSaleModal(true);
+      };
 
-        <div className="flex-grow p-6 overflow-y-auto">
-          <div className="flex space-x-3 mb-6 border-b border-gray-200">
-            <button
-              onClick={() => setCurrentAdminView('products')}
-              className={`tab-button ${currentAdminView === 'products' ? 'tab-button-active' : ''}`}
-            >
-              Manage Products
-            </button>
-            <button
-              onClick={() => setCurrentAdminView('sales')}
-              className={`tab-button ${currentAdminView === 'sales' ? 'tab-button-active' : ''}`}
-            >
-              Sales History
-            </button>
-            <button
-              onClick={() => setCurrentAdminView('users')}
-              className={`tab-button ${currentAdminView === 'users' ? 'tab-button-active' : ''}`}
-            >
-              Manage Users
-            </button>
-          </div>
+      const handleUpdateSale = async () => {
+        setErrorMessage('');
+        setSuccessMessage('');
 
-          <Message message={errorMessage} type="error" />
-          <Message message={successMessage} type="success" />
+        if (!editingSale || !editSaleDate || !editSaleCustomerName || !editSalePaymentMethod) {
+          setErrorMessage("All fields are required to update sale.");
+          return;
+        }
 
-          {currentAdminView === 'products' && (
-            <div className="bg-white p-6 rounded-2xl shadow-xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-semibold text-gray-700">Products List</h2>
-                <button onClick={() => {
-                  setShowAddProductModal(true);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }} className="btn-primary">
-                  Add New Product
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="table-header">Product Name</th>
-                      <th scope="col" className="table-header">Batch Number</th>
-                      <th scope="col" className="table-header">Price</th>
-                      <th scope="col" className="table-header">Stock</th>
-                      <th scope="col" className="table-header">Status</th>
-                      <th scope="col" className="table-header">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {products.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="text-center py-4 text-gray-500">No products found.</td>
-                      </tr>
-                    ) : (
-                      products.map(product => (
-                        <tr key={product.id}>
-                          <td className="table-cell">{product.name}</td>
-                          <td className="table-cell">{product.batchNumber || 'N/A'}</td>
-                          <td className="table-cell">RM{product.price ? product.price.toFixed(2) : '0.00'}</td>
-                          <td className="table-cell">{product.stock}</td>
-                          <td className="table-cell">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${product.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {product.status || 'Active'}
-                            </span>
-                          </td>
-                          <td className="table-cell">
-                            <div className="flex items-center space-x-2">
-                              <button onClick={() => openEditProductModal(product)} className="text-indigo-600 hover:text-indigo-900 transition">
-                                Edit
-                              </button>
-                              <button onClick={() => handleDeleteProduct(product.id)} className="text-red-600 hover:text-red-900 transition">
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+        if (!db) {
+          setErrorMessage("Database not ready.");
+          return;
+        }
+
+        const updatedTotal = editSaleItems.reduce((sum, item) => sum + item.totalPrice, 0);
+
+        const pendingUpdate = {
+          saleId: editingSale.id,
+          updatedData: {
+            date: editSaleDate,
+            customerName: editSaleCustomerName,
+            paymentMethod: editSalePaymentMethod,
+            remark: editSaleRemark,
+            items: editSaleItems,
+            total: updatedTotal,
+            lastUpdatedBy: userId,
+            lastUpdated: serverTimestamp()
+          }
+        };
+
+        setPendingSaleUpdate(pendingUpdate);
+        setShowConfirmEditSaleModal(true);
+        setShowEditSaleModal(false);
+      };
+
+
+      const confirmUpdateSale = async () => {
+        setErrorMessage('');
+        setSuccessMessage('');
+        if (!pendingSaleUpdate || !db) {
+          setErrorMessage("No pending update to confirm.");
+          setShowConfirmEditSaleModal(false);
+          return;
+        }
+
+        try {
+          const saleRef = doc(db, `artifacts/${window.__app_id}/public/data/sales`, pendingSaleUpdate.saleId);
+          await updateDoc(saleRef, pendingSaleUpdate.updatedData);
+          setSuccessMessage("Sale record updated successfully!");
+          setPendingSaleUpdate(null);
+          setShowConfirmEditSaleModal(false);
+        } catch (error) {
+          console.error("Error updating sale record:", error);
+          setErrorMessage("Failed to update sale record: " + error.message);
+        }
+      };
+      const openConfirmDeleteModal = (saleId) => {
+        setDeletingSaleId(saleId);
+        setShowConfirmDeleteModal(true);
+      };
+
+      const handleAddUser = (e) => {
+        e.preventDefault();
+        handleCreateUser();
+      };
+      
+      return (
+        <div className="flex-1 flex flex-col overflow-auto bg-gray-100 font-[Inter]">
+          <style>{customStyles}</style>
+          {/* Admin Header */}
+          <header className="bg-white shadow-md p-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+            <div className="flex items-center space-x-4">
+              <span className="text-gray-600 text-sm">Signed in as: <span className="font-medium">{auth?.currentUser?.email}</span></span>
+              <button onClick={handleSignOut} className="btn-secondary">
+                Sign Out
+              </button>
             </div>
-          )}
+          </header>
 
-          {currentAdminView === 'sales' && (
-            <div className="bg-white p-6 rounded-2xl shadow-xl">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-6">Sales History</h2>
-              {/* Sales History Filter Section */}
-              <div className="mb-6 bg-gray-50 p-4 rounded-xl shadow-inner">
-                <h3 className="font-semibold text-lg text-gray-700 mb-3">Filter Sales</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label htmlFor="filterCustomerName" className="label-field">Customer Name</label>
-                    <input
-                      id="filterCustomerName"
-                      type="text"
-                      value={filterCustomerName}
-                      onChange={(e) => setFilterCustomerName(e.target.value)}
-                      placeholder="e.g., John Doe"
-                      className="input-field"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="filterPaymentMethod" className="label-field">Payment Method</label>
-                    <select
-                      id="filterPaymentMethod"
-                      value={filterPaymentMethod}
-                      onChange={(e) => setFilterPaymentMethod(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="">All</option>
-                      <option value="Cash">Cash</option>
-                      <option value="DuitNowQR">DuitNowQR</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="filterStartDate" className="label-field">Start Date</label>
-                    <input
-                      id="filterStartDate"
-                      type="date"
-                      value={filterStartDate}
-                      onChange={(e) => setFilterStartDate(e.target.value)}
-                      className="input-field"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="filterEndDate" className="label-field">End Date</label>
-                    <input
-                      id="filterEndDate"
-                      type="date"
-                      value={filterEndDate}
-                      onChange={(e) => setFilterEndDate(e.target.value)}
-                      className="input-field"
-                    />
-                  </div>
-                </div>
+          {/* Admin Navigation Tabs */}
+          <div className="bg-white px-4 pt-2 border-b border-gray-200">
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setCurrentAdminView('products')}
+                className={`tab-button ${currentAdminView === 'products' ? 'tab-button-active' : ''}`}
+              >
+                Manage Products
+              </button>
+              <button
+                onClick={() => setCurrentAdminView('sales')}
+                className={`tab-button ${currentAdminView === 'sales' ? 'tab-button-active' : ''}`}
+              >
+                Sales History
+              </button>
+              <button
+                onClick={() => setCurrentAdminView('users')}
+                className={`tab-button ${currentAdminView === 'users' ? 'tab-button-active' : ''}`}
+              >
+                Manage Users
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-1 p-6 overflow-auto">
+            {errorMessage && (
+              <div className="p-3 mb-4 text-sm text-white bg-red-500 rounded-lg text-center">
+                {errorMessage}
               </div>
+            )}
+            {successMessage && (
+              <div className="p-3 mb-4 text-sm text-white bg-green-500 rounded-lg text-center">
+                {successMessage}
+              </div>
+            )}
+            <div className="bg-white p-6 rounded-xl shadow-lg">
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="table-header">Sale ID</th>
-                      <th scope="col" className="table-header">Date</th>
-                      <th scope="col" className="table-header">Customer Name</th>
-                      <th scope="col" className="table-header">Total Amount</th>
-                      <th scope="col" className="table-header">Payment Method</th>
-                      <th scope="col" className="table-header">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredSales.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="text-center py-4 text-gray-500">No sales history found.</td>
-                      </tr>
-                    ) : (
-                      filteredSales.map(sale => (
-                        <React.Fragment key={sale.id}>
-                          <tr
-                            className="cursor-pointer hover:bg-gray-100 transition-colors"
-                            onClick={() => setExpandedSaleId(expandedSaleId === sale.id ? null : sale.id)}
-                          >
-                            <td className="table-cell">{sale.id.substring(0, 8)}...</td>
+              {currentAdminView === 'products' && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-semibold text-gray-700">Products List</h2>
+                    <button
+                      onClick={() => setShowAddProductModal(true)}
+                      className="btn-primary"
+                    >
+                      Add New Product
+                    </button>
+                  </div>
+                  <div className="overflow-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="table-header">Product Name</th>
+                          <th className="table-header">Batch Number</th>
+                          <th className="table-header">Price</th>
+                          <th className="table-header">Stock</th>
+                          <th className="table-header">Status</th>
+                          <th className="table-header text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {products.map((product) => (
+                          <tr key={product.id}>
+                            <td className="table-cell font-medium text-gray-900">{product.name}</td>
+                            <td className="table-cell">{product.batchNumber}</td>
+                            <td className="table-cell">MYR {product.price.toFixed(2)}</td>
+                            <td className="table-cell">{product.stock}</td>
                             <td className="table-cell">
-                              {sale.purchaseDate || (sale.timestamp ? new Date(sale.timestamp.seconds * 1000).toLocaleDateString() : 'N/A')}
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  product.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}
+                              >
+                                {product.status || 'Active'}
+                              </span>
                             </td>
-                            <td className="table-cell">{sale.customerName}</td>
-                            <td className="table-cell">RM{sale.total ? sale.total.toFixed(2) : '0.00'}</td>
-                            <td className="table-cell">{sale.paymentMethod}</td>
-                            <td className="table-cell">
-                              <div className="flex space-x-2">
-                                <button onClick={(e) => {
-                                  e.stopPropagation(); // Prevent row from collapsing
-                                  openEditSaleModal(sale);
-                                }} className="text-indigo-600 hover:text-indigo-900 transition">
+                            <td className="table-cell text-right">
+                              <div className="flex justify-end space-x-2">
+                                <button
+                                  onClick={() => openEditProductModal(product)}
+                                  className="text-indigo-600 hover:text-indigo-900"
+                                >
                                   Edit
                                 </button>
-                                <button onClick={(e) => {
-                                  e.stopPropagation(); // Prevent row from collapsing
-                                  handleDeleteSale(sale.id);
-                                }} className="text-red-600 hover:text-red-900 transition">
+                                <button
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
                                   Delete
                                 </button>
                               </div>
                             </td>
                           </tr>
-                          {/* Expanded details row */}
-                          {expandedSaleId === sale.id && (
-                            <tr className="bg-gray-50">
-                              <td colSpan="6" className="p-4 border-t border-gray-200">
-                                <h4 className="font-semibold text-gray-800 mb-2">Sale Details:</h4>
-                                <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-                                  <li>Sold By: {sale.soldBy}</li>
-                                  <li>Customer Name: {sale.customerName}</li>
-                                  <li>Payment Method: {sale.paymentMethod}</li>
-                                  <li>Remark: {sale.remark || 'N/A'}</li>
-                                </ul>
-                                <div className="mt-4 overflow-x-auto">
-                                  <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-100">
-                                      <tr>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price (RM)</th>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount (RM)</th>
-                                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total (RM)</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                      {sale.items.map((item, itemIndex) => (
-                                        <tr key={itemIndex}>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.batchNumber || 'N/A'}</td>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.originalPrice.toFixed(2)}</td>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.quantity}</td>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{item.discountApplied.toFixed(2)}</td>
-                                          <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">{(item.discountedPrice * item.quantity).toFixed(2)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {currentAdminView === 'sales' && (
+                <div>
+                  <h2 className="text-2xl font-semibold text-gray-700 mb-4">Sales History</h2>
+                  {/* Sales Filtering UI */}
+                  <div className="bg-white p-4 rounded-xl shadow-inner mb-6 flex flex-wrap gap-4">
+                    <div className="flex-1 min-w-[200px]">
+                      <label htmlFor="filterCustomerName" className="label-field">Customer Name</label>
+                      <input
+                        type="text"
+                        id="filterCustomerName"
+                        value={filterCustomerName}
+                        onChange={(e) => setFilterCustomerName(e.target.value)}
+                        placeholder="Filter by customer name"
+                        className="input-field-small"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <label htmlFor="filterPaymentMethod" className="label-field">Payment Method</label>
+                      <select
+                        id="filterPaymentMethod"
+                        value={filterPaymentMethod}
+                        onChange={(e) => setFilterPaymentMethod(e.target.value)}
+                        className="input-field-small"
+                      >
+                        <option value="">All</option>
+                        <option value="Cash">Cash</option>
+                        <option value="DuitNowQR">DuitNowQR</option>
+                      </select>
+                    </div>
+                    </div>
+
+                  {/* Sales Table */}
+                  <div className="overflow-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="table-header">Sale ID</th>
+                          <th className="table-header">Date</th>
+                          <th className="table-header">Customer Name</th>
+                          <th className="table-header">Total</th>
+                          <th className="table-header">Payment Method</th>
+                          <th className="table-header text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredSales.map((sale) => (
+                          <React.Fragment key={sale.id}>
+                            <tr className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setExpandedSaleId(expandedSaleId === sale.id ? null : sale.id)}>
+                              <td className="table-cell text-xs text-gray-500">{sale.id}</td>
+                              <td className="table-cell">
+                                {sale.purchaseDate}
+                              </td>
+                              <td className="table-cell">{sale.customerName}</td>
+                              <td className="table-cell font-medium">MYR {sale.total?.toFixed(2) || '0.00'}</td>
+                              <td className="table-cell">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                  {sale.paymentMethod}
+                                </span>
+                              </td>
+                              
+                              <td className="table-cell text-right">
+                                <div className="flex justify-end space-x-2">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEditSaleModal(sale); }}
+                                    className="text-indigo-600 hover:text-indigo-900"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openConfirmDeleteModal(sale.id); }}
+                                    className="text-red-600 hover:text-red-900"
+                                  >
+                                    Delete
+                                  </button>
                                 </div>
                               </td>
                             </tr>
-                          )}
-                        </React.Fragment>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                            {expandedSaleId === sale.id && (
+                              <tr className="bg-gray-100">
+                                <td colSpan="6" className="p-4">
+                                  <div className="p-4 rounded-lg bg-white shadow-inner">
+                                    <h4 className="text-lg font-bold text-gray-800 mb-2">Sale Details</h4>
+                                    <p className="text-sm text-gray-600 mb-2"><strong>Remark:</strong> {sale.remark || 'N/A'}</p>
+                                    <table className="min-w-full divide-y divide-gray-200 mt-2">
+                                      <thead className="bg-gray-50">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price (MYR)</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount (MYR)</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total (MYR)</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch No</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="bg-white divide-y divide-gray-200">
+                                        {sale.items.map((item, index) => (
+                                          <tr key={index}>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.quantity}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.originalPrice?.toFixed(2) || '0.00'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.discountApplied?.toFixed(2) || '0.00'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.totalPrice?.toFixed(2) || '0.00'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.batchNumber || 'N/A'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {currentAdminView === 'users' && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-semibold text-gray-700">User Management</h2>
+                    <button
+                      onClick={() => setShowAddUserModal(true)}
+                      className="btn-primary"
+                    >
+                      Add New User
+                    </button>
+                  </div>
+                  <div className="overflow-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="table-header">User Email</th>
+                          <th className="table-header">Role</th>
+                          <th className="table-header">User ID</th>
+                          <th className="table-header text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {usersInSystem.map((user) => (
+                          <tr key={user.id}>
+                            <td className="table-cell font-medium text-gray-900">{user.email}</td>
+                            <td className="table-cell">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  user.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                                }`}
+                              >
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="table-cell text-xs text-gray-500">{user.id}</td>
+                            <td className="table-cell text-right">
+                              <div className="flex justify-end space-x-2">
+                                <button
+                                  onClick={() => openEditUserRoleModal(user)}
+                                  className="text-indigo-600 hover:text-indigo-900"
+                                >
+                                  Edit Role
+                                </button>
+                                <button
+                                  onClick={() => openConfirmDeleteUserModal(user.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* --- NEW MODALS --- */}
+          {showEditSaleModal && (
+            <div className="modal-overlay">
+              <div className="modal-content-lg">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Sale Record</h2>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label htmlFor="editSaleDate" className="label-field">Sale Date</label>
+                    <input
+                      id="editSaleDate"
+                      type="date"
+                      value={purchaseDate}
+                      onChange={(e) => setPurchaseDate(e.target.value)}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="editSaleCustomerName" className="label-field">Customer Name</label>
+                    <input
+                      id="editSaleCustomerName"
+                      type="text"
+                      value={editSaleCustomerName}
+                      onChange={(e) => setEditSaleCustomerName(e.target.value)}
+                      placeholder="Enter customer name"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="editSalePaymentMethod" className="label-field">Payment Method</label>
+                    <select
+                      id="editSalePaymentMethod"
+                      value={editSalePaymentMethod}
+                      onChange={(e) => setEditSalePaymentMethod(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="DuitNowQR">DuitNowQR</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label htmlFor="editSaleRemark" className="label-field">Remark</label>
+                  <textarea
+                    id="editSaleRemark"
+                    value={editSaleRemark}
+                    onChange={(e) => setEditSaleRemark(e.target.value)}
+                    placeholder="Add a remark (optional)"
+                    className="input-field"
+                  />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">Items</h3>
+                <div className="bg-white rounded-xl shadow-lg overflow-auto max-h-60 mb-4">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Price</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {editSaleItems.map((item, index) => (
+                        <tr key={index}>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.quantity}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">MYR {item.originalPrice?.toFixed(2) || '0.00'}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.discountApplied?.toFixed(2) || '0.00'}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{item.totalPrice?.toFixed(2) || '0.00'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-between items-center text-lg font-bold text-gray-800 mb-6">
+                  <span>New Total:</span>
+                  <span>MYR {editSaleItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <button onClick={() => setShowEditSaleModal(false)} className="btn-secondary">
+                    Cancel
+                  </button>
+                  <button onClick={handleUpdateSale} className="btn-primary">
+                    Update Sale
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {currentAdminView === 'users' && (
-            <div className="bg-white p-6 rounded-2xl shadow-xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-semibold text-gray-700">Manage Users</h2>
-                <button onClick={() => {
-                  setShowAddUserModal(true);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }} className="btn-primary">
-                  Add New User
-                </button>
+          {showConfirmEditSaleModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Sale Update</h2>
+                <p className="text-gray-600 mb-6">Are you sure you want to update this sale record? This action cannot be undone.</p>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowConfirmEditSaleModal(false);
+                      setShowEditSaleModal(true); // Go back to the edit modal
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button onClick={confirmUpdateSale} className="btn-primary bg-green-600 hover:bg-green-700">
+                    Confirm Update
+                  </button>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="table-header">User ID</th>
-                      <th scope="col" className="table-header">Email</th>
-                      <th scope="col" className="table-header">Role</th>
-                      <th scope="col" className="table-header">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {usersInSystem.length === 0 ? (
-                      <tr>
-                        <td colSpan="4" className="text-center py-4 text-gray-500">No users found.</td>
-                      </tr>
-                    ) : (
-                      usersInSystem.map(user => (
-                        <tr key={user.id}>
-                          <td className="table-cell">{user.id}</td>
-                          <td className="table-cell">{user.email}</td>
-                          <td className="table-cell">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {user.role}
-                            </span>
-                          </td>
-                          <td className="table-cell">
-                            {user.id !== userId && (
-                              <button
-                                onClick={() => openEditUserRoleModal(user)}
-                                className="text-indigo-600 hover:text-indigo-900 transition"
-                              >
-                                Edit Role
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+            </div>
+          )}
+          {showConfirmDeleteModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Deletion</h2>
+                <p className="text-gray-600 mb-6">Are you sure you want to permanently delete this sale record? This action cannot be undone.</p>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowConfirmDeleteModal(false);
+                      setDeletingSaleId(null);
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button onClick={confirmDeleteSale} className="btn-primary bg-red-600 hover:bg-red-700">
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {showAddProductModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New Product</h2>
+                <form onSubmit={(e) => { e.preventDefault(); handleAddProduct(); }} className="space-y-4">
+                  <div>
+                    <label className="label-field" htmlFor="newProductName">Product Name</label>
+                    <input
+                      id="newProductName"
+                      type="text"
+                      value={newProductName}
+                      onChange={(e) => setNewProductName(e.target.value)}
+                      placeholder="e.g., Iced Latte"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newProductPrice">Price (MYR)</label>
+                    <input
+                      id="newProductPrice"
+                      type="number"
+                      step="0.01"
+                      value={newProductPrice}
+                      onChange={(e) => setNewProductPrice(e.target.value)}
+                      placeholder="e.g., 12.50"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newProductStock">Stock</label>
+                    <input
+                      id="newProductStock"
+                      type="number"
+                      value={newProductStock}
+                      onChange={(e) => setNewProductStock(e.target.value)}
+                      placeholder="e.g., 100"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newProductBatchNumber">Batch Number</label>
+                    <input
+                      id="newProductBatchNumber"
+                      type="text"
+                      value={newProductBatchNumber}
+                      onChange={(e) => setNewProductBatchNumber(e.target.value)}
+                      placeholder="e.g., BLK123"
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newProductStatus">Status</label>
+                    <select
+                      id="newProductStatus"
+                      value={newProductStatus}
+                      onChange={(e) => setNewProductStatus(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button type="button" onClick={() => setShowAddProductModal(false)} className="btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      Add Product
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showEditProductModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Product</h2>
+                <form onSubmit={(e) => { e.preventDefault(); handleEditProduct(); }} className="space-y-4">
+                  <div>
+                    <label className="label-field" htmlFor="editProductName">Product Name</label>
+                    <input
+                      id="editProductName"
+                      type="text"
+                      value={editProductName}
+                      onChange={(e) => setEditProductName(e.target.value)}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="editProductPrice">Price (MYR)</label>
+                    <input
+                      id="editProductPrice"
+                      type="number"
+                      step="0.01"
+                      value={editProductPrice}
+                      onChange={(e) => setEditProductPrice(e.target.value)}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="editProductStock">Stock</label>
+                    <input
+                      id="editProductStock"
+                      type="number"
+                      value={editProductStock}
+                      onChange={(e) => setEditProductStock(e.target.value)}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="editProductBatchNumber">Batch Number</label>
+                    <input
+                      id="editProductBatchNumber"
+                      type="text"
+                      value={editProductBatchNumber}
+                      onChange={(e) => setEditProductBatchNumber(e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="editProductStatus">Status</label>
+                    <select
+                      id="editProductStatus"
+                      value={editProductStatus}
+                      onChange={(e) => setEditProductStatus(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button type="button" onClick={() => setShowEditProductModal(false)} className="btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      Save Changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showAddUserModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New User</h2>
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div>
+                    <label className="label-field" htmlFor="newUserEmail">Email</label>
+                    <input
+                      id="newUserEmail"
+                      type="email"
+                      value={newAddUserEmail}
+                      onChange={(e) => setNewAddUserEmail(e.target.value)}
+                      placeholder="e.g., user@example.com"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newUserPassword">Password</label>
+                    <input
+                      id="newUserPassword"
+                      type="password"
+                      value={newAddUserPassword}
+                      onChange={(e) => setNewAddUserPassword(e.target.value)}
+                      placeholder="Must be at least 6 characters"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="newUserRole">Role</label>
+                    <select
+                      id="newUserRole"
+                      value={newAddUserRole}
+                      onChange={(e) => setNewAddUserRole(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="cashier">Cashier</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="adminPassword">Your Admin Password</label>
+                    <input
+                      id="adminPassword"
+                      type="password"
+                      value={adminPasswordForUserCreation}
+                      onChange={(e) => setAdminPasswordForUserCreation(e.target.value)}
+                      placeholder="Confirm your password to proceed"
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button type="button" onClick={() => setShowAddUserModal(false)} className="btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      Create User
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showEditUserRoleModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit User Role</h2>
+                <p className="text-gray-600 mb-4">Editing role for: <span className="font-semibold">{editingUserForRole?.email}</span></p>
+                <div className="mb-4">
+                  <label className="label-field" htmlFor="newRoleForUser">New Role</label>
+                  <select
+                    id="newRoleForUser"
+                    value={newRoleForUser}
+                    onChange={(e) => setNewRoleForUser(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="cashier">Cashier</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <button type="button" onClick={() => setShowEditUserRoleModal(false)} className="btn-secondary">
+                    Cancel
+                  </button>
+                  <button onClick={handleEditUserRole} className="btn-primary">
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {showConfirmDeleteUserModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm User Deletion</h2>
+                <p className="text-gray-600 mb-6">
+                  Are you sure you want to delete the user role for <span className="font-semibold">{usersInSystem.find(user => user.id === deletingUserId)?.email}</span>?
+                  This will prevent them from logging in. This action cannot be undone.
+                </p>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowConfirmDeleteUserModal(false);
+                      setDeletingUserId(null);
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button onClick={handleDeleteUser} className="btn-primary bg-red-600 hover:bg-red-700">
+                    Confirm Delete
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
+      );
+    };
 
-        {/* Add Product Modal */}
-        {showAddProductModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New Product</h2>
-              <div className="mb-4">
-                <label htmlFor="newProductName" className="label-field">Product Name</label>
-                <input type="text" id="newProductName" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} className="input-field" />
+    return renderAdminDashboard();
+  };
+
+  const CashierPanel = () => {
+    return (
+      <div className="flex-1 flex flex-col p-6 overflow-auto bg-gray-100 font-[Inter]">
+        <style>{customStyles}</style>
+        <div className="bg-white shadow-md rounded-xl p-6 flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Cashier Panel</h1>
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-600 text-sm">Signed in as: <span className="font-medium">{auth?.currentUser?.email}</span></span>
+            <button onClick={handleSignOut} className="btn-secondary">
+              Sign Out
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-grow">
+          {/* Product Grid */}
+          <div className="col-span-1 lg:col-span-2 bg-white rounded-xl shadow-lg p-6 flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-gray-700">Products</h2>
+            </div>
+            {errorMessage && (
+              <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-lg" role="alert">
+                <p>{errorMessage}</p>
               </div>
-              <div className="mb-4">
-                <label htmlFor="newProductPrice" className="label-field">Price (RM)</label>
-                <input type="number" id="newProductPrice" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} step="0.01" className="input-field" />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="newProductStock" className="label-field">Stock</label>
-                <input type="number" id="newProductStock" value={newProductStock} onChange={(e) => setNewProductStock(e.target.value)} min="0" className="input-field" />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="newProductBatchNumber" className="label-field">Batch Number</label>
-                <input type="text" id="newProductBatchNumber" value={newProductBatchNumber} onChange={(e) => setNewProductBatchNumber(e.target.value)} className="input-field" />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="newProductStatus" className="label-field">Status</label>
-                <select id="newProductStatus" value={newProductStatus} onChange={(e) => setNewProductStatus(e.target.value)} className="input-field">
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button onClick={() => {
-                  setShowAddProductModal(false);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }} className="btn-secondary">Cancel</button>
-                <button onClick={handleAddNewProduct} className="btn-primary">Add Product</button>
-              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto flex-grow">
+              {products.length > 0 ? (
+                products.map((product) => (
+                  <div
+                    key={product.id}
+                    onClick={() => addProductToCart(product)}
+                    className="bg-gray-50 rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer flex flex-col justify-between"
+                  >
+                    <div>
+                      <h3 className="font-semibold text-gray-800 text-lg">{product.name}</h3>
+                      <p className="text-gray-600 text-sm">Stock: {product.stock}</p>
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-lg font-bold text-indigo-600">MYR {product.price.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 col-span-full p-8">No active products available.</div>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Edit Product Modal */}
-        {showEditProductModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Product</h2>
-              <div className="mb-4">
-                <label htmlFor="editProductName" className="label-field">Product Name</label>
-                <input type="text" id="editProductName" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className="input-field" />
+          {/* Cart & Checkout */}
+          <div className="col-span-1 bg-white rounded-xl shadow-lg p-6 flex flex-col">
+            <h2 className="text-2xl font-semibold text-gray-700 mb-4">Cart</h2>
+            {successMessage && (
+              <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded-lg" role="alert">
+                <p>{successMessage}</p>
               </div>
-              <div className="mb-4">
-                <label htmlFor="editProductPrice" className="label-field">Price (RM)</label>
-                <input type="number" id="editProductPrice" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} step="0.01" className="input-field" />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="editProductStock" className="label-field">Stock</label>
-                <input type="number" id="editProductStock" value={editProductStock} onChange={(e) => setEditProductStock(e.target.value)} min="0" className="input-field" />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="editProductBatchNumber" className="label-field">Batch Number</label>
-                <input type="text" id="editProductBatchNumber" value={editProductBatchNumber} onChange={(e) => setEditProductBatchNumber(e.target.value)} className="input-field" />
-              </div>
-              <div className="mb-6">
-                <label htmlFor="editProductStatus" className="label-field">Status</label>
-                <select id="editProductStatus" value={editProductStatus} onChange={(e) => setEditProductStatus(e.target.value)} className="input-field">
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button onClick={() => {
-                  setShowEditProductModal(false);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }} className="btn-secondary">Cancel</button>
-                <button onClick={handleUpdateProduct} className="btn-primary">Update Product</button>
-              </div>
+            )}
+            <div className="flex-1 overflow-y-auto mb-4">
+              {cart.length > 0 ? (
+                cart.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between border-b border-gray-200 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-800">{item.name}</p>
+                      <p className="text-sm text-gray-500">
+                        MYR {(item.price - (item.discountApplied || 0)).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex flex-col space-y-1 ml-4">
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs text-gray-500">Qty:</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value))}
+                          min="1"
+                          className="input-field-table w-16 text-center"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs text-gray-500">Disc:</label>
+                        <input
+                          type="number"
+                          value={item.discountApplied}
+                          onChange={(e) => updateCartItemDiscount(item.id, e.target.value)}
+                          min="0"
+                          className="input-field-table w-16 text-center"
+                        />
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 p-8">Cart is empty.</div>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Add User Modal */}
-        {showAddUserModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Add New User</h2>
-              <div className="mb-4">
-                <label htmlFor="newAddUserEmail" className="label-field">Email</label>
-                <input type="email" id="newAddUserEmail" value={newAddUserEmail} onChange={(e) => setNewAddUserEmail(e.target.value)} placeholder="user@example.com" className="input-field" />
+            <div className="mt-auto">
+              <div className="flex justify-between items-center text-xl font-bold text-gray-800 mb-4">
+                <span>Total:</span>
+                <span>MYR {total.toFixed(2)}</span>
               </div>
-              <div className="mb-4">
-                <label htmlFor="newAddUserPassword" className="label-field">Password</label>
-                <input type="password" id="newAddUserPassword" value={newAddUserPassword} onChange={(e) => setNewAddUserPassword(e.target.value)} placeholder="password" className="input-field" />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="newAddUserRole" className="label-field">Role</label>
-                <select id="newAddUserRole" value={newAddUserRole} onChange={(e) => setNewAddUserRole(e.target.value)} className="input-field">
-                  <option value="cashier">Cashier</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="mb-6">
-                <label htmlFor="adminPasswordForUserCreation" className="label-field">Your Admin Password (for confirmation)</label>
-                <input type="password" id="adminPasswordForUserCreation" value={adminPasswordForUserCreation} onChange={(e) => setAdminPasswordForUserCreation(e.target.value)} placeholder="Your admin password" className="input-field" />
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button onClick={() => {
-                  setShowAddUserModal(false);
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }} className="btn-secondary">Cancel</button>
-                <button onClick={handleAddNewUser} className="btn-primary">Add User</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit User Role Modal */}
-        {showEditUserRoleModal && editingUserForRole && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Role for {editingUserForRole.email || editingUserForRole.id.substring(0, 8) + '...'}</h2>
-              <div className="mb-6">
-                <label htmlFor="userRoleSelect" className="block text-sm font-medium text-gray-700">Select New Role</label>
-                <select
-                  id="userRoleSelect"
-                  value={newRoleForUser}
-                  onChange={(e) => setNewRoleForUser(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="cashier">Cashier</option>
-                </select>
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowEditUserRoleModal(false);
-                    setEditingUserForRole(null);
-                    setNewRoleForUser('');
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateUserRole}
-                  className="btn-primary"
-                >
-                  Update Role
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- MODALS FOR SALES EDITING AND DELETING --- */}
-        {showEditSaleModal && editingSale && (
-          <div className="modal-overlay">
-            <div className="modal-content-lg">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Edit Sale Record (ID: {editingSale.id.substring(0, 8)}...)</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="space-y-4">
                 <div>
-                  <label htmlFor="editSaleDate" className="label-field">Sale Date</label>
+                  <label htmlFor="customerName" className="label-field">Customer Name</label>
                   <input
-                    type="date"
-                    id="editSaleDate"
-                    value={editSaleDate}
-                    onChange={(e) => setEditSaleDate(e.target.value)}
-                    className="input-field"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="editSaleCustomerName" className="label-field">Customer Name</label>
-                  <input
+                    id="customerName"
                     type="text"
-                    id="editSaleCustomerName"
-                    value={editSaleCustomerName}
-                    onChange={(e) => setEditSaleCustomerName(e.target.value)}
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Enter customer name"
                     className="input-field"
+                    required
                   />
                 </div>
                 <div>
-                  <label htmlFor="editSalePaymentMethod" className="label-field">Payment Method</label>
+                  <label htmlFor="paymentMethod" className="label-field">Payment Method</label>
                   <select
-                    id="editSalePaymentMethod"
-                    value={editSalePaymentMethod}
-                    onChange={(e) => setEditSalePaymentMethod(e.target.value)}
+                    id="paymentMethod"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
                     className="input-field"
                   >
                     <option value="Cash">Cash</option>
@@ -1806,165 +1989,58 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="editSaleRemark" className="label-field">Remark</label>
+                  <label htmlFor="purchaseDate" className="label-field">Purchase Date</label>
                   <input
-                    type="text"
-                    id="editSaleRemark"
-                    value={editSaleRemark}
-                    onChange={(e) => setEditSaleRemark(e.target.value)}
+                    id="purchaseDate"
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
                     className="input-field"
+                    required
                   />
                 </div>
-              </div>
-
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Sale Items</h3>
-              <div className="overflow-x-auto mb-6 max-h-60 overflow-y-auto border rounded-lg">
-                <table className="min-w-full">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount (RM)</th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Final Price</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {editSaleItems.map((item, index) => (
-                      <tr key={index}>
-                        <td className="py-2 px-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <input
-                            type="text"
-                            value={item.batchNumber}
-                            readOnly // Batch number is now read-only
-                            className="input-field-table bg-gray-100 cursor-not-allowed"
-                          />
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => handleUpdateEditSaleItem(index, 'quantity', e.target.value)}
-                            min="1"
-                            className="input-field-table w-16"
-                          />
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <input
-                            type="number"
-                            value={item.discountApplied}
-                            onChange={(e) => handleUpdateEditSaleItem(index, 'discountApplied', e.target.value)}
-                            min="0"
-                            step="0.01"
-                            className="input-field-table w-20"
-                          />
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap text-sm text-gray-500">
-                          RM{(item.discountedPrice * item.quantity).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end items-center text-lg font-bold text-gray-800">
-                New Total: RM{editSaleItems.reduce((sum, item) => sum + (item.discountedPrice * item.quantity), 0).toFixed(2)}
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
                 <button
-                  onClick={() => {
-                    setShowEditSaleModal(false);
-                    setEditingSale(null);
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  className="btn-secondary"
+                  onClick={checkout}
+                  className="w-full btn-primary"
                 >
-                  Cancel
+                  Complete Sale
                 </button>
-                <button onClick={handleConfirmEditSale} className="btn-primary">
-                  Save Changes
+                <button
+                  onClick={clearSale}
+                  className="w-full btn-secondary"
+                >
+                  Clear
                 </button>
               </div>
             </div>
           </div>
-        )}
-
-        {showConfirmEditSaleModal && pendingSaleUpdate && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Changes</h2>
-              <p className="text-gray-600 mb-6">Are you sure you want to update this sale record? This action cannot be undone.</p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowConfirmEditSaleModal(false);
-                    setShowEditSaleModal(true); // Go back to the edit form
-                    setPendingSaleUpdate(null);
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button onClick={confirmUpdateSale} className="btn-primary">
-                  Confirm Update
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {showConfirmDeleteModal && deletingSaleId && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-semibold text-gray-700 mb-4">Confirm Deletion</h2>
-              <p className="text-gray-600 mb-6">Are you sure you want to permanently delete this sale record? This action cannot be undone.</p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowConfirmDeleteModal(false);
-                    setDeletingSaleId(null);
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button onClick={confirmDeleteSale} className="btn-primary bg-red-600 hover:bg-red-700">
-                  Confirm Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* --- END NEW MODALS --- */}
+        </div>
       </div>
     );
   };
 
   // --- MAIN APP RENDER LOGIC ---
-  if (loading || !isAuthReady) {
-    return <Loader />;
-  }
-
-  if (!isAuthenticated) {
-    return <AuthForm />;
-  }
-
-  if (userRole === 'admin') {
-    return <AdminPanel />;
-  }
-
-  if (userRole === 'cashier') {
-    return <CashierPanel />;
-  }
-
-  // Fallback for unhandled states
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 font-[Inter]">
-      <p className="text-red-500">Authentication state is unexpected. Please try again.</p>
+    <div className="main-container">
+      <style>{customStyles}</style>
+      {loading || !isAuthReady ? (
+        <Loader />
+      ) : !isAuthenticated ? (
+        <AuthForm />
+      ) : userRole === 'admin' ? (
+        <AdminPanel />
+      ) : userRole === 'cashier' ? (
+        <CashierPanel />
+      ) : (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 font-[Inter]">
+          <p className="text-red-500">Authentication state is unexpected. Please try again...</p>
+        </div>
+      )}
+      {isAuthenticated && (
+        <footer className="footer">
+          &copy; 2024 MHA POS System created by Muhammad Hazwan Arif
+        </footer>
+      )}
     </div>
   );
-}
+};
